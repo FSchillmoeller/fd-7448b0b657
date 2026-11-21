@@ -345,7 +345,7 @@ function zeichnen() {
   else {
     const sum = k => O.reduce((a, o) => a + (o[k] || 0), 0);
     h = `<div class="grid kpis">
-      ${kpi("Gesamtwert", eur(sum("wert")), O.length + (O.length === 1 ? " Objekt" : " Objekte"))}
+      ${kpi("Gesamtwert", eur(sum("wert")), O.length + (O.length === 1 ? " Objekt" : " Objekte") + (O.some(o => o.anteil < 1) ? " · dein Anteil" : ""))}
       ${kpi("Restschuld", eur(sum("restschuld")), sum("wert") ? "Beleihung " + pct(sum("restschuld") / sum("wert") * 100, 0) : "")}
       ${kpi("Eigenkapital", eur(sum("ek")))}
       ${kpi("Kaltmiete / Monat", eur(sum("miete")), eur(sum("miete") * 12) + " im Jahr")}
@@ -357,7 +357,7 @@ function zeichnen() {
     const opt = `<select id="obj-wahl"><option value="">Alle Objekte</option>${O.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>`;
     h += card(`Wert und Restschuld im Zeitverlauf <span style="float:right">${opt}</span>`, `<div id="tv-legende">${legende([{ name: "Wert", farbe: S1 }, { name: "Restschuld", farbe: S2 }])}</div><div class="chart" id="c-tv"></div>`,
       `Wert ab letzter Bewertung mit ${pct(I.wertsteigerung * 100, 0)} p.a. fortgeschrieben · Restschuld nach Tilgungsplan`);
-    h += `<div class="grid objekte">${O.map(o => `<div class="card obj"><h2>${esc(o.name)}</h2><div class="adr">${esc(o.adresse)}</div><dl>
+    h += `<div class="grid objekte">${O.map(o => `<div class="card obj"><h2>${esc(o.name)}</h2><div class="adr">${esc(o.adresse)}${o.anteil && o.anteil < 1 ? ` · Anteil ${pct(o.anteil * 100, 0)}${o.mit ? " (mit " + esc(o.mit) + ")" : ""}` : ""}${o.nutzung === "selbst" ? " · selbst genutzt" : ""}${o.status && /bau/i.test(o.status) ? " · im Bau" : ""}</div><dl>
       <dt>Wert</dt><dd>${eur(o.wert)}</dd><dt>Restschuld</dt><dd>${eur(o.restschuld)}</dd><dt>Eigenkapital</dt><dd>${eur(o.ek)}</dd>
       <dt>Kaltmiete / Monat</dt><dd>${eur(o.miete)}</dd><dt>Rate / Monat</dt><dd>${eur(o.rate)}</dd><dt>Kosten / Jahr</dt><dd>${eur(o.kosten)}</dd>
       <dt>Cashflow / Monat</dt><dd>${eur(o.cashflow)}</dd><dt>Brutto- / Nettorendite</dt><dd>${pct(o.brutto)} / ${pct(o.netto)}</dd>
