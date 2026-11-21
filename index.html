@@ -124,11 +124,11 @@ footer details { margin-top: 6px; }
     <div id="einrichtung" hidden>
       <ol class="steps">
         <li>Auf „Passkey anlegen“ tippen und mit Touch ID / Face ID bestätigen. Der Passkey wird über deinen iCloud-Schlüsselbund auch auf dem iPhone verfügbar.</li>
-        <li>Optional ein Notfallpasswort festlegen (mind. 12 Zeichen) – falls der Passkey einmal nicht geht.</li>
+        <li>Optional ein Notfallpasswort <b>selbst eintippen und aufschreiben</b> (mind. 12 Zeichen). Bitte keinen Safari-Vorschlag verwenden.</li>
         <li>Die Datei <b>finanz-zugang.json</b> aus „Downloads“ in den Ordner <b>Eingang</b> ziehen.</li>
       </ol>
       <div class="pw" style="display:flex">
-        <input type="password" id="pw-neu" autocomplete="new-password" placeholder="Notfallpasswort (optional)">
+        <input type="password" id="pw-neu" autocomplete="off" data-lpignore="true" placeholder="Notfallpasswort selbst eintippen (optional)">
         <button id="btn-anlegen" class="primary">Passkey anlegen</button>
       </div>
     </div>
