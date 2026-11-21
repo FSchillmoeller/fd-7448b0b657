@@ -300,6 +300,16 @@ function zeichnen() {
   h += `<div class="grid two">` + card("Privat: Einnahmen und Ausgaben",
       V.cashflow.length ? legende([{ name: "Einnahmen", farbe: S1 }, { name: "Ausgaben", farbe: S2 }]) + platz("c-cf", { labels: V.cashflow.map(c => c.m), art: "balken", xfmt: monat, serien: [{ name: "Einnahmen", farbe: S1, werte: V.cashflow.map(c => c.ein) }, { name: "Ausgaben", farbe: S2, werte: V.cashflow.map(c => c.aus) }] }) : leer("Kommt mit dem ersten Kontoumsatz-Export (CSV)."))
     + card("Ausgaben nach Kategorie", V.kategorien.length ? hbalken(V.kategorien.map(k => ({ label: k.k, wert: k.b }))) : leer("–"), "letzte 12 Monate, privat") + `</div>`;
+  for (const dp of (V.depots || [])) {
+    h += card(`${esc(dp.name)}`, `<div class="grid kpis" style="margin-bottom:12px">
+        ${kpi("Depotwert", eur(dp.wert), "Stand " + datumDe(dp.datum))}
+        ${kpi("Eingezahlt", eur(dp.einzahlungen), dp.auszahlungen ? "Auszahlungen " + eur(dp.auszahlungen) : "")}
+        ${kpi("Gewinn", eur(dp.guv), "gesamt " + pct(dp.rendite))}
+        ${kpi("Rendite p.a.", pct(dp.rendite_pa))}</div>`
+      + (dp.positionen.length ? tabelle([["Fonds"], ["Wert", 1], ["Eingezahlt", 1], ["Gewinn", 1], ["p.a.", 1]],
+          dp.positionen.map(p => [esc(p.fonds), eur(p.wert), eur(p.einzahlungen), eur(p.guv), pct(p.rendite_pa)])) : ""));
+  }
+  if ((V.depot_einzahlungen || []).length) h += card("Einzahlungen in Fondsdepots pro Jahr", platz("c-depein", { labels: V.depot_einzahlungen.map(x => x.j), art: "balken", serien: [{ name: "Einzahlungen", farbe: S1, werte: V.depot_einzahlungen.map(x => x.b) }] }), "Käufe und Sparpläne laut Depotumsätzen");
   if (V.konten.length) h += card("Konten und Verträge", tabelle([["Konto"], ["Art"], ["Bereich"], ["Stand", 1], ["vom", 1]],
     V.konten.map(k => [esc(k.name), esc(k.art), k.bereich === "geschaeft" ? "Geschäft" : "Privat", eur(k.saldo), datumDe(k.datum)])));
   $("#vermoegen").innerHTML = h;
@@ -365,21 +375,24 @@ function zeichnen() {
   }
 
   // ---------- Steuern
-  const ST = D.steuern.jahre, sl = ST[ST.length - 1];
+  const ST = D.steuern.jahre, STV = ST.filter(s => s.veranlagt), sl = STV[STV.length - 1] || ST[ST.length - 1];
   if (!ST.length) $("#steuern").innerHTML = card("", leer("Noch keine Steuerdaten. Einkommensteuerbescheide, -erklärungen und Gewerbesteuerbescheide in den Eingang legen."));
   else {
-    const vs = ST[ST.length - 2];
+    const vs = STV[STV.length - 2];
     h = `<div class="grid kpis">
       ${kpi("Zu versteuerndes Einkommen " + sl.jahr, eur(sl.zve), vs ? delta(sl.zve, vs.zve) + " zu " + vs.jahr : sl.quelle)}
       ${kpi("Steuer " + sl.jahr, eur(sl.gesamt), "ESt + Soli + KiSt · " + sl.quelle)}
       ${kpi("Durchschnittssteuersatz", pct(sl.satz))}
       ${kpi(sl.abrechnung == null ? "Abrechnung" : sl.abrechnung >= 0 ? "Erstattung" : "Nachzahlung", eur(sl.abrechnung == null ? null : Math.abs(sl.abrechnung)), sl.gewerbesteuer != null ? "Gewerbesteuer " + eur(sl.gewerbesteuer) : "")}</div>`;
     h += `<div class="grid two">` + card("Steuerlast pro Jahr", legende([{ name: "Einkommensteuer", farbe: S1 }, { name: "Solidaritätszuschlag", farbe: S3 }, { name: "Kirchensteuer", farbe: S4 }])
-        + platz("c-st", { labels: ST.map(s => String(s.jahr)), art: "stapel", serien: [{ name: "Einkommensteuer", farbe: S1, werte: ST.map(s => s.einkommensteuer) }, { name: "Solidaritätszuschlag", farbe: S3, werte: ST.map(s => s.soli) }, { name: "Kirchensteuer", farbe: S4, werte: ST.map(s => s.kirchensteuer) }] }))
+        + (STV.length ? platz("c-st", { labels: STV.map(s => String(s.jahr)), art: "stapel", serien: [{ name: "Einkommensteuer", farbe: S1, werte: STV.map(s => s.einkommensteuer) }, { name: "Solidaritätszuschlag", farbe: S3, werte: STV.map(s => s.soli) }, { name: "Kirchensteuer", farbe: S4, werte: STV.map(s => s.kirchensteuer) }] }) : leer("Kommt mit dem ersten Steuerbescheid oder der ersten Steuererklärung.")))
       + card("Einkünfte", legende([{ name: "Gewerbebetrieb", farbe: S1 }, { name: "Vermietung", farbe: S2 }])
-        + platz("c-ek", { labels: ST.map(s => String(s.jahr)), art: "balken", serien: [{ name: "Gewerbebetrieb", farbe: S1, werte: ST.map(s => s.gewerbe) }, { name: "Vermietung", farbe: S2, werte: ST.map(s => s.vuv) }] })) + `</div>`;
-    h += card("Übersicht", tabelle([["Jahr"], ["Quelle"], ["zvE", 1], ["ESt", 1], ["Soli", 1], ["KiSt", 1], ["Gesamt", 1], ["Satz", 1], ["Erst./Nachz.", 1], ["GewSt", 1], ["Gewerbe", 1], ["V+V", 1]],
-      ST.slice().reverse().map(s => [s.jahr, s.quelle, eur(s.zve), eur(s.einkommensteuer), eur(s.soli), eur(s.kirchensteuer), eur(s.gesamt), pct(s.satz), eur(s.abrechnung), eur(s.gewerbesteuer), eur(s.gewerbe), eur(s.vuv)])));
+        + (STV.length ? platz("c-ek", { labels: STV.map(s => String(s.jahr)), art: "balken", serien: [{ name: "Gewerbebetrieb", farbe: S1, werte: STV.map(s => s.gewerbe) }, { name: "Vermietung", farbe: S2, werte: STV.map(s => s.vuv) }] }) : leer("–"))) + `</div>`;
+    const KAP = ST.filter(s => s.kap_ertrag != null);
+    if (KAP.length) h += card("Kapitalerträge aus Fondsdepots", tabelle([["Jahr"], ["Steuerpflichtiger Ertrag", 1], ["Abgeltungsteuer inkl. Soli/KiSt", 1]],
+      KAP.slice().reverse().map(s => [s.jahr, eur(s.kap_ertrag), eur(s.abgeltung)])), "bereits von der Bank einbehalten (u.a. Vorabpauschale)");
+    if (STV.length) h += card("Übersicht", tabelle([["Jahr"], ["Quelle"], ["zvE", 1], ["ESt", 1], ["Soli", 1], ["KiSt", 1], ["Gesamt", 1], ["Satz", 1], ["Erst./Nachz.", 1], ["GewSt", 1], ["Gewerbe", 1], ["V+V", 1]],
+      STV.slice().reverse().map(s => [s.jahr, s.quelle, eur(s.zve), eur(s.einkommensteuer), eur(s.soli), eur(s.kirchensteuer), eur(s.gesamt), pct(s.satz), eur(s.abrechnung), eur(s.gewerbesteuer), eur(s.gewerbe), eur(s.vuv)])));
     $("#steuern").innerHTML = h;
   }
 
