@@ -1,0 +1,23 @@
+{
+ "art": "finanz-zugang",
+ "v": 1,
+ "prf_salt": "qNykC0UAY8hwzsGIvBe1cDgqC9eGjdKHy2b3Z8oWU9g=",
+ "passkeys": [
+  {
+   "id": "f6lbl1w5dYgxrS8QxmrQHHO4Xsw",
+   "angelegt": "2026-11-21",
+   "wrapped": {
+    "iv": "/nnoEYoWB8ehMS7L",
+    "ct": "zNydpM0uYyoc1ut4gCZQxVwNzYc8OveGiY2IfWq13ivb36QrXrx+Kprn99HcOMqC"
+   }
+  }
+ ],
+ "passwort": {
+  "salt": "K0gyQxRRHL7GyDjpgXr34A==",
+  "iter": 600000,
+  "wrapped": {
+   "iv": "JgwR13bselMZYIeC",
+   "ct": "lY3JvHBZiqSI9JvaK0Mb6svIaixYL0AaGo76+IsW8S8sgtVOlt1l5LgrAGLY6skg"
+  }
+ }
+}
