@@ -267,7 +267,7 @@ function hbalken(items) {
   const mx = Math.max(...items.map(i => Math.abs(i.wert)), 1);
   return `<div class="hb">${items.map(i => `<div class="lab" title="${esc(i.label)}">${esc(i.label)}</div>
     <div><div class="bar" style="width:${Math.abs(i.wert) / mx * 100}%;background:${i.farbe || css("--s1")}"></div></div>
-    <div class="val">${eur(i.wert)}</div>`).join("")}</div>`;
+    <div class="val">${eur(i.wert)}${i.zusatz ? ` <span style="color:var(--t3);font-weight:400">${i.zusatz}</span>` : ""}</div>`).join("")}</div>`;
 }
 function tabelle(kopf, zeilen) {
   return `<div class="scroll"><table><thead><tr>${kopf.map(([t, n]) => `<th class="${n ? "n" : ""}">${t}</th>`).join("")}</tr></thead>
@@ -278,7 +278,7 @@ function platz(id, opts) { plaetze[id] = opts; return `<div class="chart" id="${
 function diagrammeZeichnen() { for (const [id, o] of Object.entries(plaetze)) { const el = document.getElementById(id); if (el && el.offsetParent !== null) diagramm(el, o); } }
 
 // ------------------------------------------------------------------ Seiten
-let zeitraum = 60;
+let zeitraum = 60, herkunft = "12";
 function zeichnen() {
   for (const k in plaetze) delete plaetze[k];
   const D = DATEN, S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3"), S4 = css("--s4");
@@ -336,10 +336,25 @@ function zeichnen() {
     if (G.cashflow.length) zeilen2.push(card("Geschäftskonto: Ein- und Auszahlungen", legende([{ name: "Eingänge", farbe: S1 }, { name: "Ausgänge", farbe: S2 }])
       + platz("c-gcf", { labels: G.cashflow.map(c => c.m), xfmt: monat, art: "balken", serien: [{ name: "Eingänge", farbe: S1, werte: G.cashflow.map(c => c.ein) }, { name: "Ausgänge", farbe: S2, werte: G.cashflow.map(c => c.aus) }] })));
     if (zeilen2.length) h += `<div class="grid ${zeilen2.length > 1 ? "two" : ""}">${zeilen2.join("")}</div>`;
+    const HK = { "12": G.herkunft_12m || [], [String(new Date().getFullYear())]: G.herkunft_jahr || [], [String(new Date().getFullYear() - 1)]: G.herkunft_vorjahr || [] };
+    if ((G.herkunft_12m || []).length) {
+      h += `<div class="grid two">` + card(`Einnahmen nach Auftraggeber <span class="seg" id="seg-hk">${Object.keys(HK).filter(k => HK[k].length).map(k => `<button data-k="${k}" aria-pressed="${k === herkunft}">${k === "12" ? "12 Mon." : k}</button>`).join("")}</span>`,
+          `<div id="hk-liste"></div>`, "Geschäftskonto, ohne Umbuchungen")
+        + card("Geschäftliche Ausgaben nach Kategorie", (G.kosten_kategorien || []).length ? hbalken(G.kosten_kategorien.map(k => ({ label: k.k, wert: k.b, farbe: S2 }))) : leer("–"), "letzte 12 Monate") + `</div>`;
+    }
     if (gj.length) h += card("Jahresübersicht", tabelle([["Jahr"], ["Umsatz", 1], ["Kosten", 1], ["Gewinn", 1], ["Marge", 1], ["Quelle"]],
       gj.slice().reverse().map(j => [j.jahr, eur(j.umsatz), eur(j.kosten), eur(j.gewinn), pct(j.marge), j.quelle === "BWA" ? `BWA (${j.monate} Mon.)` : "Abschluss"])));
   }
   $("#geschaeft").innerHTML = h;
+  const hkZeigen = () => {
+    const el = $("#hk-liste"); if (!el) return;
+    const HKd = { "12": G.herkunft_12m || [], [String(new Date().getFullYear())]: G.herkunft_jahr || [], [String(new Date().getFullYear() - 1)]: G.herkunft_vorjahr || [] };
+    const l = HKd[herkunft] || [];
+    el.innerHTML = l.length ? hbalken(l.map(x => ({ label: x.name, wert: x.betrag, zusatz: pct(x.anteil, 0) }))) : leer("Keine Einnahmen im Zeitraum.");
+    document.querySelectorAll("#seg-hk button").forEach(b => b.setAttribute("aria-pressed", b.dataset.k === herkunft));
+  };
+  $("#seg-hk")?.addEventListener("click", e => { if (e.target.dataset.k) { herkunft = e.target.dataset.k; hkZeigen(); } });
+  hkZeigen();
 
   // ---------- Immobilien
   const I = D.immobilien, O = I.objekte;
