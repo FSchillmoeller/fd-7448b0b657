@@ -278,7 +278,68 @@ function platz(id, opts) { plaetze[id] = opts; return `<div class="chart" id="${
 function diagrammeZeichnen() { for (const [id, o] of Object.entries(plaetze)) { const el = document.getElementById(id); if (el && el.offsetParent !== null) diagramm(el, o); } }
 
 // ------------------------------------------------------------------ Seiten
-let zeitraum = 60, herkunft = "12";
+let zeitraum = 60, herkunft = "12", depotWahl = 0, posWahl = null;
+function zeichneDepots(D) {
+  const S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3"), S4 = css("--s4");
+  const L = D.depots || [];
+  if (!L.length) { $("#depots").innerHTML = card("", leer("Noch keine Depotdaten. Transaktionen (z.B. Scalable-CSV) oder FNZ-Wertentwicklung in den Eingang legen.")); return; }
+  depotWahl = Math.min(depotWahl, L.length - 1);
+  const dp = L[depotWahl];
+  const gesamt = L.reduce((a, d) => a + (d.wert || 0), 0);
+  let h = `<div class="card" style="padding:10px 12px"><div class="seg" id="seg-depot" style="float:none;display:flex;flex-wrap:wrap">${L.map((d, i) =>
+    `<button data-i="${i}" aria-pressed="${i === depotWahl}">${esc(d.name)} · ${kurz(d.wert || 0)} €</button>`).join("")}</div>
+    <div class="sub" style="margin:8px 0 0">Alle Depots zusammen: <b>${eur(gesamt)}</b></div></div>`;
+  h += `<div class="grid kpis">
+    ${kpi("Depotwert", eur(dp.wert), dp.datum ? "Stand " + datumDe(dp.datum) : "")}
+    ${kpi("Eingezahlt (netto)", eur(dp.eingezahlt), "Einzahlungen minus Auszahlungen")}
+    ${kpi("Gewinn", eur(dp.gewinn), dp.eingezahlt ? pct(dp.gewinn / dp.eingezahlt * 100) + " auf eingezahlt" : "")}
+    ${dp.rendite_pa != null ? kpi("Rendite p.a.", pct(dp.rendite_pa), "laut FNZ") : kpi("Erträge gesamt", eur(dp.ertraege), "Dividenden und Zinsen, realisiert " + eur(dp.realisiert))}</div>`;
+  const J = dp.jahre || [];
+  if (J.length) {
+    h += card("Pro Jahr nach Buchungsdatum", legende([{ name: "Einzahlungen", farbe: S1 }, { name: "Käufe", farbe: S4 }, { name: "Erträge", farbe: S3 }, { name: "Auszahlungen", farbe: S2 }])
+      + platz("c-dpj", { labels: J.map(j => String(j.jahr)), art: "balken", serien: [
+          { name: "Einzahlungen", farbe: S1, werte: J.map(j => j.einzahlung) }, { name: "Käufe", farbe: S4, werte: J.map(j => j.kauf + j.wiederanlage) },
+          { name: "Erträge", farbe: S3, werte: J.map(j => j.ertrag) }, { name: "Auszahlungen", farbe: S2, werte: J.map(j => j.auszahlung) }] })
+      + tabelle([["Jahr"], ["Einzahlungen", 1], ["Auszahlungen", 1], ["Käufe", 1], ["Wiederanlage", 1], ["Verkäufe", 1], ["Erträge", 1], ["Gebühren", 1], ["Steuern", 1], ["Buchungen", 1]],
+          J.slice().reverse().map(j => [j.jahr, eur(j.einzahlung), eur(j.auszahlung), eur(j.kauf), eur(j.wiederanlage), eur(j.verkauf), eur(j.ertrag), eur(j.gebuehr), eur(j.steuer), j.anzahl])));
+  }
+  const EV = dp.einzahlungen_verlauf || [];
+  if (EV.length > 1) {
+    const wv = Object.fromEntries((dp.wert_verlauf || []).map(x => [x.d.slice(0, 7), x.w]));
+    h += card("Eingezahlt und Depotwert im Verlauf", legende([{ name: "Eingezahlt (netto)", farbe: S4 }, { name: "Depotwert", farbe: S1 }])
+      + platz("c-dpv", { labels: EV.map(x => x.m), xfmt: monat, nullLinie: false, serien: [
+          { name: "Eingezahlt (netto)", farbe: S4, werte: EV.map(x => x.netto) }, { name: "Depotwert", farbe: S1, werte: EV.map(x => wv[x.m] ?? null) }] }),
+      "Depotwerte kommen aus Screenshots/Auszügen – je mehr davon, desto vollständiger die Kurve");
+  }
+  const P = dp.positionen || [];
+  if (P.length) {
+    const fnz = dp.quelle_positionen.startsWith("Wertentwicklung");
+    h += card(`Positionen (${P.length})`, tabelle(
+      fnz ? [["Fonds"], ["Wert", 1], ["Eingezahlt", 1], ["Gewinn", 1], ["p.a.", 1]] : [["Wertpapier"], ["Stück", 1], ["Investiert", 1], ["Wert", 1], ["Gewinn", 1], ["Rendite", 1], ["Kurs vom", 1]],
+      P.map(p => fnz ? [esc(p.name), eur(p.wert), eur(p.investiert), eur(p.gewinn), pct(p.rendite_pa)]
+        : [esc(p.name), (p.stueck || 0).toLocaleString("de-DE", { maximumFractionDigits: 4 }), eur(p.investiert), eur(p.wert), eur(p.gewinn), pct(p.rendite), datumDe(p.kurs_datum)]))
+      .replace(/<tbody><tr>/, "<tbody><tr>").replace(/<tr>(?=<td)/g, (m, o) => m) + (fnz ? "" : `<div id="kurs-box"></div>`),
+      fnz ? `Quelle: ${dp.quelle_positionen}` : `Wert = Stück × letzter Kurs aus den Transaktionen · Summe ${eur(dp.summe_positionen)} (Depotwert laut Outbank ${eur(dp.wert)}) · Zeile antippen für Kursverlauf`);
+  }
+  $("#depots").innerHTML = h;
+  document.querySelectorAll("#seg-depot button").forEach(b => b.onclick = () => { depotWahl = +b.dataset.i; posWahl = null; zeichneDepots(D); requestAnimationFrame(diagrammeZeichnen); });
+  if (P.length && !dp.quelle_positionen.startsWith("Wertentwicklung")) {
+    const zeilenEls = document.querySelectorAll("#depots table:last-of-type tbody tr");
+    zeilenEls.forEach((tr, i) => {
+      tr.classList.add("klick");
+      tr.onclick = () => {
+        zeilenEls.forEach(x => x.classList.remove("aktiv")); tr.classList.add("aktiv");
+        const p = P[i], k = p.kurse || [];
+        const box = $("#kurs-box");
+        if (k.length < 2) { box.innerHTML = leer("Zu wenige Kurse in den Transaktionen für einen Verlauf."); return; }
+        box.innerHTML = `<h2 style="margin-top:14px">${esc(p.name)} – Kursverlauf</h2><div class="chart" id="c-kurs"></div>`;
+        plaetze["c-kurs"] = { labels: k.map(x => x.d), xfmt: d => datumDe(d).slice(3), nullLinie: false, serien: [{ name: "Kurs", farbe: S1, werte: k.map(x => x.k) }] };
+        diagramm($("#c-kurs"), plaetze["c-kurs"]);
+      };
+    });
+  }
+}
+
 function zeichnen() {
   for (const k in plaetze) delete plaetze[k];
   const D = DATEN, S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3"), S4 = css("--s4");
@@ -300,22 +361,15 @@ function zeichnen() {
   h += `<div class="grid two">` + card("Privat: Einnahmen und Ausgaben",
       V.cashflow.length ? legende([{ name: "Einnahmen", farbe: S1 }, { name: "Ausgaben", farbe: S2 }]) + platz("c-cf", { labels: V.cashflow.map(c => c.m), art: "balken", xfmt: monat, serien: [{ name: "Einnahmen", farbe: S1, werte: V.cashflow.map(c => c.ein) }, { name: "Ausgaben", farbe: S2, werte: V.cashflow.map(c => c.aus) }] }) : leer("Kommt mit dem ersten Kontoumsatz-Export (CSV)."))
     + card("Ausgaben nach Kategorie", V.kategorien.length ? hbalken(V.kategorien.map(k => ({ label: k.k, wert: k.b }))) : leer("–"), "letzte 12 Monate, privat") + `</div>`;
-  for (const dp of (V.depots || [])) {
-    h += card(`${esc(dp.name)}`, `<div class="grid kpis" style="margin-bottom:12px">
-        ${kpi("Depotwert", eur(dp.wert), "Stand " + datumDe(dp.datum))}
-        ${kpi("Eingezahlt", eur(dp.einzahlungen), dp.auszahlungen ? "Auszahlungen " + eur(dp.auszahlungen) : "")}
-        ${kpi("Gewinn", eur(dp.guv), "gesamt " + pct(dp.rendite))}
-        ${kpi("Rendite p.a.", pct(dp.rendite_pa))}</div>`
-      + (dp.positionen.length ? tabelle([["Fonds"], ["Wert", 1], ["Eingezahlt", 1], ["Gewinn", 1], ["p.a.", 1]],
-          dp.positionen.map(p => [esc(p.fonds), eur(p.wert), eur(p.einzahlungen), eur(p.guv), pct(p.rendite_pa)])) : ""));
-  }
-  if ((V.depot_einzahlungen || []).length) h += card("Einzahlungen in Fondsdepots pro Jahr", platz("c-depein", { labels: V.depot_einzahlungen.map(x => x.j), art: "balken", serien: [{ name: "Einzahlungen", farbe: S1, werte: V.depot_einzahlungen.map(x => x.b) }] }), "Käufe und Sparpläne laut Depotumsätzen");
   const ARTEN = { giro: "Girokonto", tagesgeld: "Spar-/Tagesgeld", depot: "Depot", vorsorge: "Vorsorge & Sonstiges" };
   if (V.konten.length) h += card("Konten und Verträge", tabelle([["Konto"], ["Art"], ["Bereich"], ["Zins", 1], ["Stand", 1], ["vom", 1]],
     V.konten.slice().sort((a, b) => (b.saldo || 0) - (a.saldo || 0)).map(k => [esc(k.name), ARTEN[k.art] || esc(k.art),
       k.bereich === "geschaeft" ? "Geschäft" : "Privat", k.zins != null ? pct(k.zins) + " p.a." : "", eur(k.saldo), datumDe(k.datum)])));
   $("#vermoegen").innerHTML = h;
   $("#seg")?.addEventListener("click", e => { const m = +e.target.dataset.m; if (m) { zeitraum = m; zeichnen(); } });
+
+  // ---------- Depots
+  zeichneDepots(D);
 
   // ---------- Geschäft
   const G = D.geschaeft, gj = G.jahre, letzt = gj[gj.length - 1], vorj = gj[gj.length - 2];
