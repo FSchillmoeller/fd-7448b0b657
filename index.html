@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Finanzen">
+<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151514" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Finanzen</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f6f6f4; --card: #fcfcfb; --line: #e6e5e0; --grid: #ecebe7;
+  --t1: #0b0b0b; --t2: #52514e; --t3: #8a8985;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --warn-bg: #fff4e0; --warn-t: #7a4a00;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #151514; --card: #1e1e1d; --line: #2e2e2c; --grid: #2a2a28;
+    --t1: #f0efec; --t2: #c3c2b7; --t3: #8f8e86;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --warn-bg: #3a2c12; --warn-t: #f3d49a;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--bg); color: var(--t1);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  -webkit-text-size-adjust: 100%; font-variant-numeric: tabular-nums; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+.stand { color: var(--t3); font-size: 12px; }
+button { font: inherit; cursor: pointer; }
+.icon-btn { background: none; border: 1px solid var(--line); color: var(--t2); border-radius: 10px; padding: 6px 10px; font-size: 13px; }
+nav { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 0 10px; margin-bottom: 4px; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--line); border-radius: 11px; padding: 3px; gap: 3px; }
+.tabs button { border: 0; background: none; color: var(--t2); padding: 8px 4px; border-radius: 9px; font-size: 14px; font-weight: 500; }
+.tabs button[aria-selected="true"] { background: var(--card); color: var(--t1); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.grid { display: grid; gap: 12px; }
+.kpis { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.two { grid-template-columns: 1fr; }
+@media (min-width: 860px) { .two { grid-template-columns: 3fr 2fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }
+.card .sub { color: var(--t3); font-size: 12px; margin: -6px 0 10px; }
+.kpi .l { color: var(--t2); font-size: 13px; }
+.kpi .v { font-size: 24px; font-weight: 650; letter-spacing: -0.02em; margin-top: 2px; white-space: nowrap; }
+.kpi .d { font-size: 12px; color: var(--t3); margin-top: 2px; }
+section { display: none; }
+section.on { display: grid; gap: 12px; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { fill: var(--t3); font-size: 11px; }
+.tip { position: absolute; pointer-events: none; background: var(--card); border: 1px solid var(--line);
+  border-radius: 10px; padding: 7px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.14);
+  white-space: nowrap; display: none; z-index: 3; }
+.tip b { display: block; margin-bottom: 3px; color: var(--t1); }
+.tip .r { display: flex; align-items: center; gap: 6px; color: var(--t2); }
+.tip .r span:last-child { margin-left: auto; padding-left: 12px; color: var(--t1); font-weight: 600; }
+.sw { width: 9px; height: 9px; border-radius: 3px; display: inline-block; flex: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--t2); margin-bottom: 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.seg { display: inline-flex; gap: 2px; background: var(--line); border-radius: 8px; padding: 2px; float: right; margin-top: -4px; }
+.seg button { border: 0; background: none; color: var(--t2); font-size: 12px; padding: 3px 8px; border-radius: 6px; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--t1); }
+.hb { display: grid; grid-template-columns: minmax(90px, 38%) 1fr auto; gap: 6px 10px; align-items: center; font-size: 13px; }
+.hb .lab { color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hb .bar { height: 10px; border-radius: 0 4px 4px 0; min-width: 2px; }
+.hb .val { text-align: right; font-weight: 600; white-space: nowrap; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--t3); font-weight: 500; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 7px 8px 7px 0; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+td.n, th.n { text-align: right; }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.warn { background: var(--warn-bg); color: var(--warn-t); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.warn::before { content: "⚠︎ "; font-weight: 700; }
+.objekte { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.obj dl { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; margin: 0; font-size: 13px; }
+.obj dt { color: var(--t2); } .obj dd { margin: 0; text-align: right; font-weight: 600; }
+.obj .adr { color: var(--t3); font-size: 12px; margin: -8px 0 10px; }
+.obj .fehlt { color: var(--warn-t); font-size: 12px; margin-top: 8px; }
+.leer { color: var(--t3); font-size: 13px; padding: 20px 0; text-align: center; }
+select { font: inherit; font-size: 13px; color: var(--t1); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+/* Sperrbildschirm */
+.lock { min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; }
+.lock .logo { width: 72px; height: 72px; border-radius: 18px; background: var(--s1); color: #fff; font-size: 38px; display: grid; place-items: center; font-weight: 700; }
+.lock p { color: var(--t2); max-width: 420px; margin: 0; }
+.primary { background: var(--s1); color: #fff; border: 0; border-radius: 12px; padding: 13px 22px; font-size: 16px; font-weight: 600; min-width: 240px; }
+.primary:disabled { opacity: .5; }
+.link { background: none; border: 0; color: var(--s1); font-size: 14px; padding: 6px; }
+.pw { display: none; flex-direction: column; gap: 8px; align-items: center; }
+.pw input { font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--t1); width: 260px; }
+.err { color: #d03b3b; font-size: 14px; min-height: 20px; }
+.steps { text-align: left; max-width: 460px; color: var(--t2); }
+.steps li { margin-bottom: 8px; }
+footer { color: var(--t3); font-size: 12px; margin-top: 18px; }
+footer details { margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="sperre" class="lock">
+    <div class="logo">€</div>
+    <h1>Finanzen</h1>
+    <p id="sperre-text">Lade …</p>
+    <button id="btn-faceid" class="primary" hidden>Mit Face ID öffnen</button>
+    <button id="btn-pw-zeigen" class="link" hidden>Mit Notfallpasswort öffnen</button>
+    <div class="pw" id="pw-box">
+      <input type="password" id="pw" autocomplete="current-password" placeholder="Notfallpasswort">
+      <button id="btn-pw" class="primary">Öffnen</button>
+    </div>
+    <div id="einrichtung" hidden>
+      <ol class="steps">
+        <li>Auf „Passkey anlegen“ tippen und mit Touch ID / Face ID bestätigen. Der Passkey wird über deinen iCloud-Schlüsselbund auch auf dem iPhone verfügbar.</li>
+        <li>Optional ein Notfallpasswort festlegen (mind. 12 Zeichen) – falls der Passkey einmal nicht geht.</li>
+        <li>Die Datei <b>finanz-zugang.json</b> aus „Downloads“ in den Ordner <b>Eingang</b> ziehen.</li>
+      </ol>
+      <div class="pw" style="display:flex">
+        <input type="password" id="pw-neu" autocomplete="new-password" placeholder="Notfallpasswort (optional)">
+        <button id="btn-anlegen" class="primary">Passkey anlegen</button>
+      </div>
+    </div>
+    <div class="err" id="fehler"></div>
+  </div>
+
+  <div id="app" hidden>
+    <header>
+      <div><h1>Finanzen</h1><div class="stand" id="stand"></div></div>
+      <div><button class="icon-btn" id="btn-neu">Aktualisieren</button> <button class="icon-btn" id="btn-sperren">Sperren</button></div>
+    </header>
+    <nav><div class="tabs" role="tablist">
+      <button role="tab" data-tab="vermoegen" aria-selected="true">Vermögen</button>
+      <button role="tab" data-tab="geschaeft">Geschäft</button>
+      <button role="tab" data-tab="immobilien">Immobilien</button>
+      <button role="tab" data-tab="steuern">Steuern</button>
+    </div></nav>
+    <section id="vermoegen" class="on"></section>
+    <section id="geschaeft"></section>
+    <section id="immobilien"></section>
+    <section id="steuern"></section>
+    <footer id="fuss"></footer>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
