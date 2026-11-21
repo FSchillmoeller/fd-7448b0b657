@@ -342,8 +342,8 @@ function zeichnen() {
           `<div id="hk-liste"></div>`, "Geschäftskonto, ohne Umbuchungen")
         + card("Geschäftliche Ausgaben nach Kategorie", (G.kosten_kategorien || []).length ? hbalken(G.kosten_kategorien.map(k => ({ label: k.k, wert: k.b, farbe: S2 }))) : leer("–"), "letzte 12 Monate") + `</div>`;
     }
-    if (gj.length) h += card("Jahresübersicht", tabelle([["Jahr"], ["Umsatz", 1], ["Kosten", 1], ["Gewinn", 1], ["Marge", 1], ["Quelle"]],
-      gj.slice().reverse().map(j => [j.jahr, eur(j.umsatz), eur(j.kosten), eur(j.gewinn), pct(j.marge), j.quelle === "BWA" ? `BWA (${j.monate} Mon.)` : "Abschluss"])));
+    if (gj.length) h += card("Jahresübersicht", tabelle([["Jahr"], ["Umsatz", 1], ["Kosten", 1], ["Gewinn", 1], ["Steuerl. Gewinn", 1], ["Marge", 1], ["Quelle"]],
+      gj.slice().reverse().map(j => [j.jahr, eur(j.umsatz), eur(j.kosten), eur(j.gewinn), eur(j.steuerlicher_gewinn), pct(j.marge), j.quelle === "BWA" ? `BWA (${j.monate} Mon.)` : j.quelle])));
   }
   $("#geschaeft").innerHTML = h;
   const hkZeigen = () => {
@@ -393,24 +393,27 @@ function zeichnen() {
   }
 
   // ---------- Steuern
-  const ST = D.steuern.jahre, STV = ST.filter(s => s.veranlagt), sl = STV[STV.length - 1] || ST[ST.length - 1];
-  if (!ST.length) $("#steuern").innerHTML = card("", leer("Noch keine Steuerdaten. Einkommensteuerbescheide, -erklärungen und Gewerbesteuerbescheide in den Eingang legen."));
+  const ST = D.steuern.jahre, STV = ST.filter(s => s.veranlagt), STB = ST.filter(s => s.betrieb);
+  if (!ST.length) $("#steuern").innerHTML = card("", leer("Noch keine Steuerdaten. Bescheide, Erklärungen und Besteuerungsgrundlagen in den Eingang legen."));
   else {
-    const vs = STV[STV.length - 2];
-    h = `<div class="grid kpis">
-      ${kpi("Zu versteuerndes Einkommen " + sl.jahr, eur(sl.zve), vs ? delta(sl.zve, vs.zve) + " zu " + vs.jahr : sl.quelle)}
-      ${kpi("Steuer " + sl.jahr, eur(sl.gesamt), "ESt + Soli + KiSt · " + sl.quelle)}
-      ${kpi("Durchschnittssteuersatz", pct(sl.satz))}
-      ${kpi(sl.abrechnung == null ? "Abrechnung" : sl.abrechnung >= 0 ? "Erstattung" : "Nachzahlung", eur(sl.abrechnung == null ? null : Math.abs(sl.abrechnung)), sl.gewerbesteuer != null ? "Gewerbesteuer " + eur(sl.gewerbesteuer) : "")}</div>`;
-    h += `<div class="grid two">` + card("Steuerlast pro Jahr", legende([{ name: "Einkommensteuer", farbe: S1 }, { name: "Solidaritätszuschlag", farbe: S3 }, { name: "Kirchensteuer", farbe: S4 }])
-        + (STV.length ? platz("c-st", { labels: STV.map(s => String(s.jahr)), art: "stapel", serien: [{ name: "Einkommensteuer", farbe: S1, werte: STV.map(s => s.einkommensteuer) }, { name: "Solidaritätszuschlag", farbe: S3, werte: STV.map(s => s.soli) }, { name: "Kirchensteuer", farbe: S4, werte: STV.map(s => s.kirchensteuer) }] }) : leer("Kommt mit dem ersten Steuerbescheid oder der ersten Steuererklärung.")))
-      + card("Einkünfte", legende([{ name: "Gewerbebetrieb", farbe: S1 }, { name: "Vermietung", farbe: S2 }])
-        + (STV.length ? platz("c-ek", { labels: STV.map(s => String(s.jahr)), art: "balken", serien: [{ name: "Gewerbebetrieb", farbe: S1, werte: STV.map(s => s.gewerbe) }, { name: "Vermietung", farbe: S2, werte: STV.map(s => s.vuv) }] }) : leer("–"))) + `</div>`;
+    h = "";
+    const lb = STB[STB.length - 1], vb = STB[STB.length - 2];
+    if (lb) h += `<div class="grid kpis">
+      ${kpi("Einkünfte Gewerbebetrieb " + lb.jahr, eur(lb.gewerbe), vb && vb.gewerbe != null && lb.gewerbe != null ? delta(lb.gewerbe, vb.gewerbe) + " zu " + vb.jahr : lb.quelle)}
+      ${kpi("Gewerbesteuer " + lb.jahr, eur(lb.gewerbesteuer), lb.gewst_messbetrag != null ? "Messbetrag " + eur(lb.gewst_messbetrag) + " (auf ESt anrechenbar)" : "")}
+      ${kpi("Umsatzsteuer-Zahllast " + lb.jahr, eur(lb.ust_zahllast), lb.ust_steuerfrei != null ? "steuerfreie Umsätze " + eur(lb.ust_steuerfrei) : "")}
+      ${STV.length ? kpi("Einkommensteuer " + STV[STV.length - 1].jahr, eur(STV[STV.length - 1].gesamt), "Durchschnittssatz " + pct(STV[STV.length - 1].satz)) : kpi("Einkommensteuer", "–", "kommt mit dem ersten ESt-Bescheid")}</div>`;
+    if (STB.length) h += `<div class="grid two">` + card("Einkünfte aus Gewerbebetrieb",
+        platz("c-gew", { labels: STB.map(s => String(s.jahr)), art: "balken", serien: [{ name: "Einkünfte", farbe: S1, werte: STB.map(s => s.gewerbe) }] }), "steuerlich, laut Feststellung / Anlage G")
+      + card("Gewerbe- und Umsatzsteuer", legende([{ name: "Gewerbesteuer", farbe: S2 }, { name: "Umsatzsteuer-Zahllast", farbe: S4 }])
+        + platz("c-gst", { labels: STB.map(s => String(s.jahr)), art: "balken", serien: [{ name: "Gewerbesteuer", farbe: S2, werte: STB.map(s => s.gewerbesteuer) }, { name: "Umsatzsteuer-Zahllast", farbe: S4, werte: STB.map(s => s.ust_zahllast) }] })) + `</div>`;
+    if (STV.length) h += card("Einkommensteuer pro Jahr", legende([{ name: "Einkommensteuer", farbe: S1 }, { name: "Solidaritätszuschlag", farbe: S3 }, { name: "Kirchensteuer", farbe: S4 }])
+        + platz("c-st", { labels: STV.map(s => String(s.jahr)), art: "stapel", serien: [{ name: "Einkommensteuer", farbe: S1, werte: STV.map(s => s.einkommensteuer) }, { name: "Solidaritätszuschlag", farbe: S3, werte: STV.map(s => s.soli) }, { name: "Kirchensteuer", farbe: S4, werte: STV.map(s => s.kirchensteuer) }] }));
     const KAP = ST.filter(s => s.kap_ertrag != null);
     if (KAP.length) h += card("Kapitalerträge aus Fondsdepots", tabelle([["Jahr"], ["Steuerpflichtiger Ertrag", 1], ["Abgeltungsteuer inkl. Soli/KiSt", 1]],
       KAP.slice().reverse().map(s => [s.jahr, eur(s.kap_ertrag), eur(s.abgeltung)])), "bereits von der Bank einbehalten (u.a. Vorabpauschale)");
-    if (STV.length) h += card("Übersicht", tabelle([["Jahr"], ["Quelle"], ["zvE", 1], ["ESt", 1], ["Soli", 1], ["KiSt", 1], ["Gesamt", 1], ["Satz", 1], ["Erst./Nachz.", 1], ["GewSt", 1], ["Gewerbe", 1], ["V+V", 1]],
-      STV.slice().reverse().map(s => [s.jahr, s.quelle, eur(s.zve), eur(s.einkommensteuer), eur(s.soli), eur(s.kirchensteuer), eur(s.gesamt), pct(s.satz), eur(s.abrechnung), eur(s.gewerbesteuer), eur(s.gewerbe), eur(s.vuv)])));
+    h += card("Übersicht", tabelle([["Jahr"], ["Quelle"], ["Einkünfte Gewerbe", 1], ["GewSt-Messbetrag", 1], ["Gewerbesteuer", 1], ["USt-Zahllast", 1], ["zvE", 1], ["ESt gesamt", 1], ["Erst./Nachz.", 1]],
+      ST.filter(s => s.betrieb || s.veranlagt).slice().reverse().map(s => [s.jahr, s.quelle, eur(s.gewerbe), eur(s.gewst_messbetrag), eur(s.gewerbesteuer), eur(s.ust_zahllast), eur(s.zve), eur(s.gesamt), eur(s.abrechnung)])));
     $("#steuern").innerHTML = h;
   }
 
