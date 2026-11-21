@@ -344,12 +344,13 @@ function zeichnen() {
   if (!O.length) $("#immobilien").innerHTML = card("", leer("Noch keine Immobilie erkannt. Kaufverträge, Darlehensverträge und Mietverträge in den Eingang legen."));
   else {
     const sum = k => O.reduce((a, o) => a + (o[k] || 0), 0);
+    const sumV = k => O.filter(o => o.nutzung !== "selbst").reduce((a, o) => a + (o[k] || 0), 0);
     h = `<div class="grid kpis">
       ${kpi("Gesamtwert", eur(sum("wert")), O.length + (O.length === 1 ? " Objekt" : " Objekte") + (O.some(o => o.anteil < 1) ? " · dein Anteil" : ""))}
       ${kpi("Restschuld", eur(sum("restschuld")), sum("wert") ? "Beleihung " + pct(sum("restschuld") / sum("wert") * 100, 0) : "")}
       ${kpi("Eigenkapital", eur(sum("ek")))}
       ${kpi("Kaltmiete / Monat", eur(sum("miete")), eur(sum("miete") * 12) + " im Jahr")}
-      ${kpi("Cashflow / Monat", eur(sum("cashflow")), "nach Rate und Kosten, vor Steuern")}</div>`;
+      ${kpi("Cashflow / Monat", eur(sumV("cashflow")), "vermietete Objekte, nach Rate und Kosten, vor Steuern")}</div>`;
     h += I.hinweise.map(x => `<div class="warn">${esc(x)}</div>`).join("");
     h += card("Wert je Objekt: Restschuld und Eigenkapital", legende([{ name: "Restschuld", farbe: S2 }, { name: "Eigenkapital", farbe: S1 }])
       + platz("c-obj", { labels: O.map(o => o.name), art: "stapel", hoehe: 250, xfmt: n => n.length > 14 ? n.slice(0, 13) + "…" : n,
