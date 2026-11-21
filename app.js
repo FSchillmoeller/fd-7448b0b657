@@ -310,8 +310,10 @@ function zeichnen() {
           dp.positionen.map(p => [esc(p.fonds), eur(p.wert), eur(p.einzahlungen), eur(p.guv), pct(p.rendite_pa)])) : ""));
   }
   if ((V.depot_einzahlungen || []).length) h += card("Einzahlungen in Fondsdepots pro Jahr", platz("c-depein", { labels: V.depot_einzahlungen.map(x => x.j), art: "balken", serien: [{ name: "Einzahlungen", farbe: S1, werte: V.depot_einzahlungen.map(x => x.b) }] }), "Käufe und Sparpläne laut Depotumsätzen");
-  if (V.konten.length) h += card("Konten und Verträge", tabelle([["Konto"], ["Art"], ["Bereich"], ["Stand", 1], ["vom", 1]],
-    V.konten.map(k => [esc(k.name), esc(k.art), k.bereich === "geschaeft" ? "Geschäft" : "Privat", eur(k.saldo), datumDe(k.datum)])));
+  const ARTEN = { giro: "Girokonto", tagesgeld: "Spar-/Tagesgeld", depot: "Depot", vorsorge: "Vorsorge & Sonstiges" };
+  if (V.konten.length) h += card("Konten und Verträge", tabelle([["Konto"], ["Art"], ["Bereich"], ["Zins", 1], ["Stand", 1], ["vom", 1]],
+    V.konten.slice().sort((a, b) => (b.saldo || 0) - (a.saldo || 0)).map(k => [esc(k.name), ARTEN[k.art] || esc(k.art),
+      k.bereich === "geschaeft" ? "Geschäft" : "Privat", k.zins != null ? pct(k.zins) + " p.a." : "", eur(k.saldo), datumDe(k.datum)])));
   $("#vermoegen").innerHTML = h;
   $("#seg")?.addEventListener("click", e => { const m = +e.target.dataset.m; if (m) { zeitraum = m; zeichnen(); } });
 
