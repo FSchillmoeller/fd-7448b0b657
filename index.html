@@ -45,9 +45,16 @@ h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
 button { font: inherit; cursor: pointer; }
 .icon-btn { background: none; border: 1px solid var(--line); color: var(--t2); border-radius: 10px; padding: 6px 10px; font-size: 13px; }
 nav { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 0 10px; margin-bottom: 4px; }
-.tabs { display: grid; grid-template-columns: repeat(5, 1fr); background: var(--line); border-radius: 11px; padding: 3px; gap: 3px; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--line); border-radius: 11px; padding: 3px; gap: 3px; }
 .tabs button { border: 0; background: none; color: var(--t2); padding: 8px 2px; border-radius: 9px; font-size: 14px; font-weight: 500; }
 @media (max-width: 420px) { .tabs button { font-size: 12.5px; } }
+.hero { text-align: center; padding: 20px 16px; }
+.hero .l { color: var(--t2); font-size: 14px; } .hero .v { font-size: 38px; font-weight: 700; letter-spacing: -0.02em; margin: 2px 0; }
+.hero .d { color: var(--t3); font-size: 13px; }
+button.kachel { display: block; text-align: left; align-self: stretch; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+button.kachel:hover { border-color: var(--s1); }
+button.kachel .l { color: var(--s1); }
+.seg.wrap { float: none; display: flex; flex-wrap: wrap; gap: 4px; }
 tr.klick { cursor: pointer; } tr.klick:hover td, tr.aktiv td { background: var(--grid); }
 .tabs button[aria-selected="true"] { background: var(--card); color: var(--t1); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .grid { display: grid; gap: 12px; }
@@ -144,13 +151,11 @@ footer details { margin-top: 6px; }
     </header>
     <nav><div class="tabs" role="tablist">
       <button role="tab" data-tab="vermoegen" aria-selected="true">Vermögen</button>
-      <button role="tab" data-tab="depots">Depots</button>
       <button role="tab" data-tab="geschaeft">Geschäft</button>
       <button role="tab" data-tab="immobilien">Immobilien</button>
       <button role="tab" data-tab="steuern">Steuern</button>
     </div></nav>
     <section id="vermoegen" class="on"></section>
-    <section id="depots"></section>
     <section id="geschaeft"></section>
     <section id="immobilien"></section>
     <section id="steuern"></section>
