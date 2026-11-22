@@ -453,11 +453,15 @@ function zeichneDepots(D) {
     const EV = dp.einzahlungen_verlauf || [], WG = Object.fromEntries((dp.wert_geschaetzt || []).map(x => [x.m, x.w]));
     if (EV.length > 1) {
       const wv = Object.fromEntries((dp.wert_verlauf || []).map(x => [x.d.slice(0, 7), x.w]));
-      h += card("Eingezahlt und Depotwert im Verlauf", legende([{ name: "Eingezahlt (netto)", farbe: S4 }, { name: "Depotwert (geschätzt)", farbe: S1 }])
-        + platz("c-dpv", { labels: EV.map(x => x.m), xfmt: monat, nullLinie: false, serien: [
-            { name: "Eingezahlt (netto)", farbe: S4, werte: EV.map(x => x.netto) },
-            { name: "Depotwert (geschätzt)", farbe: S1, werte: EV.map(x => wv[x.m] ?? WG[x.m] ?? null) }] }),
-        "Depotwert = Bestand × letzter bekannter Kurs aus den Transaktionen, ab Kontoauszug echte Stände");
+      const EVm = Object.fromEntries(EV.map(x => [x.m, x.netto]));
+      const mon = [...new Set([...EV.map(x => x.m), ...Object.keys(WG), ...Object.keys(wv)])].filter(m => m >= EV[0].m).sort();
+      let letzt = null; const ein = mon.map(m => (letzt = EVm[m] ?? letzt));
+      h += card("Eingezahlt und Depotwert im Verlauf", legende([{ name: "Eingezahlt (netto)", farbe: S4 }, { name: "Depotwert", farbe: S1 }])
+        + platz("c-dpv", { labels: mon, xfmt: monat, nullLinie: false, serien: [
+            { name: "Eingezahlt (netto)", farbe: S4, werte: ein },
+            { name: "Depotwert", farbe: S1, werte: mon.map(m => wv[m] ?? WG[m] ?? null) }] }),
+        dp.interpoliert ? `Kauf ${monat(dp.interpoliert[0])} und Depotauszug ${monat(dp.interpoliert[1])} sind belegt – dazwischen gleichmäßig verteilt (Schätzung, keine Tageskurse)`
+          : "Depotwert = Bestand × letzter bekannter Kurs aus den Transaktionen, ab Kontoauszug echte Stände");
     }
     if ((dp.perf || []).length > 2) h += card("Wertentwicklung seit Kauf (%)", platz("c-perf", { labels: dp.perf.map(x => x.d), xfmt: d => datumDe(d).slice(3), nullLinie: true,
       serien: [{ name: "Wertentwicklung %", farbe: S3, werte: dp.perf.map(x => x.p) }] }), "laut Depotbank");
