@@ -371,7 +371,9 @@ function zeichneKonten(D) {
     liste.sort((a, b) => (b.saldo || 0) - (a.saldo || 0));
     const summe = liste.reduce((a, k) => a + (k.saldo || 0), 0);
     h += `<div class="card" id="${id}"><h2>${titel} <span style="float:right">${eur(summe)}</span></h2>` + tabelle([["Konto"], ["Zins", 1], ["Stand", 1], ["vom", 1]],
-      liste.map(k => [esc(k.name) + (k.bewegungen.length || k.verlauf.length > 1 ? " ›" : ""), k.zins != null ? pct(k.zins) + " p.a." : "", eur(k.saldo), datumDe(k.datum)])) + `</div>`;
+      liste.map(k => [esc(k.name) + (k.bewegungen.length || k.verlauf.length > 1 ? " ›" : "")
+        + (k.nummer || k.institut ? `<div class="klein">${[k.institut, k.nummer && !k.name.replace(/\s/g, "").includes(k.nummer.replace(/\s/g, "")) ? k.nummer : null].filter(Boolean).map(esc).join(" · ")}</div>` : ""),
+        k.zins != null ? pct(k.zins) + " p.a." : "", eur(k.saldo), datumDe(k.datum)])) + `</div>`;
   }
   const det = K.filter(k => k.art !== "depot" && (k.bewegungen.length || k.verlauf.length > 1));
   if (det.length) {
@@ -824,10 +826,10 @@ function zeichneSteuern(D) {
   const ab = s.abgeleitet || [];
   const kap = s.e_kap != null && s.e_kap !== 0 ? w(s.e_kap) : s.kap_32d != null ? eur(s.kap_32d) + ' <span class="klein">(§ 32d EStG, Abgeltungsteuer)</span>' : w(s.e_kap);
   const zeilen = [
-    ["Summe der Einkünfte – Ehemann", w(s.se_mann)], ["Summe der Einkünfte – Ehefrau", s.se_frau == null && s.se_mann != null && s.se_zus === s.se_mann ? "–" : w(s.se_frau)],
-    ["Summe der Einkünfte – zusammen", w(s.se_zus)],
     ...ESTFELDER.map(([l, k]) => { const alt = s.se_zus == null ? { e_gewerbe: s.gewerbe, e_vuv: s.vuv }[k] : null; const v = s[k] ?? alt;
       return [l, k === "e_kap" ? kap : (v == null && ["e_selbst", "e_sonst"].includes(k) ? "–" : w(v, ab.includes(k.slice(2))))]; }),
+    ["Summe der Einkünfte – Ehemann", w(s.se_mann)], ["Summe der Einkünfte – Ehefrau", s.se_frau == null && s.se_mann != null && s.se_zus === s.se_mann ? "–" : w(s.se_frau)],
+    ["<b>Summe der Einkünfte – zusammen</b>", s.se_zus == null ? fehlt : "<b>" + eur(s.se_zus) + "</b>"],
     ["Gesamtbetrag der Einkünfte", w(s.gde)], ["Zu versteuerndes Einkommen", w(s.zve)],
     ["Festgesetzte Einkommensteuer", w(s.einkommensteuer)], ["Solidaritätszuschlag", w(s.soli)], ["Kirchensteuer", w(s.kirchensteuer)],
     ["Steuerbelastung gesamt (ESt + Soli + KiSt)", s.einkommensteuer == null ? fehlt : "<b>" + eur(steuern(s)) + "</b>"],
@@ -836,8 +838,8 @@ function zeichneSteuern(D) {
     `<table class="detail">${zeilen.map(([l, v]) => `<tr><td>${l}</td><td class="n">${v}</td></tr>`).join("")}</table>`,
     `Quelle: ${s.quelle === "Bescheid" ? "Einkommensteuerbescheid" : s.quelle === "Erklärung" ? "Steuerberechnung/Erklärung (kein Bescheid hochgeladen)" : s.quelle} · Werte wie im Bescheid, nichts geschätzt · „fehlt“ = im Dokument nicht (lesbar) enthalten`);
   // alle Jahre
-  h += card("Alle Jahre", tabelle([["Jahr"], ["Quelle"], ["Summe Eink.", 1], ["Gewerbe", 1], ["Nichtselbst.", 1], ["Kapital", 1], ["V+V", 1], ["GdE", 1], ["zvE", 1], ["ESt", 1], ["Soli", 1], ["KiSt", 1], ["Gesamt", 1]],
-    STV.slice().reverse().map(x => [x.jahr, x.quelle, eur(x.se_zus), eur(x.e_gewerbe ?? (x.se_zus == null ? x.gewerbe : null)), eur(x.e_nsa), eur(x.e_kap || x.kap_32d), eur(x.e_vuv ?? (x.se_zus == null ? x.vuv : null)), eur(x.gde), eur(x.zve),
+  h += card("Alle Jahre", tabelle([["Jahr"], ["Quelle"], ["Gewerbe", 1], ["Nichtselbst.", 1], ["Kapital", 1], ["V+V", 1], ["Summe Eink.", 1], ["GdE", 1], ["zvE", 1], ["ESt", 1], ["Soli", 1], ["KiSt", 1], ["Gesamt", 1]],
+    STV.slice().reverse().map(x => [x.jahr, x.quelle, eur(x.e_gewerbe ?? (x.se_zus == null ? x.gewerbe : null)), eur(x.e_nsa), eur(x.e_kap || x.kap_32d), eur(x.e_vuv ?? (x.se_zus == null ? x.vuv : null)), eur(x.se_zus), eur(x.gde), eur(x.zve),
       eur(x.einkommensteuer), eur(x.soli), eur(x.kirchensteuer), eur(x.gesamt)])), "– = im Bescheid nicht enthalten oder nicht lesbar");
   // V+V je Aktenzeichen
   const AZ = [...new Set(STV.flatMap(x => Object.keys(x.vuv_az || {})))];
