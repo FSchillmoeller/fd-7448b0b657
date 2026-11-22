@@ -361,7 +361,8 @@ function zeichneKonten(D) {
   const K = D.vermoegen.konten;
   const gruppen = [["Konten", K.filter(k => k.art === "giro" || k.art === "tagesgeld"), "v-konten"],
                    ["Vorsorge – kurzfristig verfügbar", K.filter(k => k.art === "vorsorge" && k.vorsorge === "kurzfristig"), "v-vorsorge"],
-                   ["Vorsorge – langfristig", K.filter(k => k.art === "vorsorge" && k.vorsorge !== "kurzfristig"), "v-vorsorge-l"]];
+                   ["Vorsorge – langfristig", K.filter(k => k.art === "vorsorge" && k.vorsorge !== "kurzfristig"), "v-vorsorge-l"],
+                   ["Treuhand – nicht im Vermögen (z.B. Mietkautionen)", K.filter(k => k.art === "treuhand"), "v-treuhand"]];
   let h = zurueck();
   for (const [titel, liste, id] of gruppen) {
     if (!liste.length) continue;
