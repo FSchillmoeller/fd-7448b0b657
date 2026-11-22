@@ -155,10 +155,11 @@ $("#btn-neu").onclick = async () => { try { await oeffnenMitDk(DK); } catch (e) 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) versteckt = Date.now();
   else if (DK && versteckt && Date.now() - versteckt > 5 * 60 * 1000) sperren();
-  else if (DK) oeffnenMitDk(DK).catch(() => {});
+  else if (DK) oeffnenMitDk(DK).catch(e => console.error(e));
 });
 
 document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  if (b.dataset.tab === "vermoegen" && DATEN && vAnsicht !== "uebersicht") { vAnsicht = "uebersicht"; zeichneVermoegen(DATEN); }
   document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === b.dataset.tab));
   window.scrollTo({ top: 0 });
@@ -278,60 +279,173 @@ function platz(id, opts) { plaetze[id] = opts; return `<div class="chart" id="${
 function diagrammeZeichnen() { for (const [id, o] of Object.entries(plaetze)) { const el = document.getElementById(id); if (el && el.offsetParent !== null) diagramm(el, o); } }
 
 // ------------------------------------------------------------------ Seiten
-let zeitraum = 60, herkunft = "12", depotWahl = 0, posWahl = null;
+let zeitraum = 60, herkunft = "12", depotWahl = -1, posWahl = null;
+// ------------------------------------------------------------------ Vermögen
+let vAnsicht = "uebersicht", kontoWahl = 0;
+function zurueck() { return `<button class="link" id="v-zurueck" style="padding:0 0 4px;justify-self:start">‹ Zurück zur Vermögensübersicht</button>`; }
+function vZeigen(a) { vAnsicht = a; zeichneVermoegen(DATEN); requestAnimationFrame(diagrammeZeichnen); window.scrollTo({ top: 0 }); }
+function tabWechseln(id) { document.querySelector(`.tabs button[data-tab="${id}"]`).click(); }
+
+function zeichneVermoegen(D) {
+  if (vAnsicht === "depots") return zeichneDepots(D);
+  if (vAnsicht === "konten") return zeichneKonten(D);
+  const S1 = css("--s1"), S2 = css("--s2");
+  const V = D.vermoegen, t = V.teile, DP = D.depots || [];
+  const vk = t["Vorsorge kurzfristig"] || 0, vlg = t["Vorsorge langfristig"] || 0;
+  const immoNetto = (t["Immobilien (Wert)"] || 0) + (t.Darlehen || 0);
+  const mitEinz = DP.filter(d => d.eingezahlt != null && d.wert != null);
+  const einz = mitEinz.reduce((a, d) => a + d.eingezahlt, 0), gew = mitEinz.reduce((a, d) => a + (d.wert - d.eingezahlt), 0);
+  const nKonten = V.konten.filter(k => k.art === "giro" || k.art === "tagesgeld").length;
+  const vl = V.verlauf.slice(-zeitraum - 1);
+  let h = `<div class="card hero"><div class="l">Nettovermögen</div><div class="v">${eur(V.netto)}</div>
+    <div class="d">${delta(V.netto, V.netto_vorjahr) ? delta(V.netto, V.netto_vorjahr) + " zum Vorjahr" : ""}</div></div>`;
+  h += `<div class="grid kpis">
+    <button class="card kpi kachel" data-ziel="depots"><div class="l">Depot & Kapitalanlage ›</div><div class="v">${eur(t.Depot)}</div>
+      <div class="d">${mitEinz.length ? `eingezahlt ${eur(einz)} · Gewinn ${eur(gew)}` : DP.length + " Depots & Anlagen"}</div></button>
+    <button class="card kpi kachel" data-ziel="konten"><div class="l">Konten ›</div><div class="v">${eur(t.Konten)}</div>
+      <div class="d">${nKonten} Konten${V.sparquote != null ? " · Sparquote " + pct(V.sparquote) : ""}</div></button>
+    <button class="card kpi kachel" data-ziel="immobilien"><div class="l">Immobilien netto ›</div><div class="v">${eur(immoNetto)}</div>
+      <div class="d">Wert ${kurz(t["Immobilien (Wert)"] || 0)} € − Darlehen ${kurz(-(t.Darlehen || 0))} €</div></button>
+    <button class="card kpi kachel" data-ziel="vorsorge"><div class="l">Vorsorge ›</div><div class="v">${eur(vk + vlg)}</div>
+      <div class="d">kurzfristig verfügbar ${eur(vk)}<br>langfristig ${eur(vlg)}</div></button></div>`;
+  h += `<div class="grid two">` + card(`Nettovermögen im Verlauf <span class="seg" id="seg">${[[12, "1J"], [36, "3J"], [60, "5J"], [120, "10J"]].map(([m, l]) => `<button data-m="${m}" aria-pressed="${m === zeitraum}">${l}</button>`).join("")}</span>`,
+      vl.length ? legende([{ name: "Nettovermögen", farbe: S1 }, { name: "Depot & Konten", farbe: css("--s3") }, { name: "Immobilien netto", farbe: css("--s4") }])
+        + platz("c-netto", { labels: vl.map(p => p.d.slice(0, 7)), xfmt: monat, nullLinie: false, serien: [
+          { name: "Nettovermögen", farbe: S1, werte: vl.map(p => p.netto) },
+          { name: "Depot & Konten", farbe: css("--s3"), werte: vl.map(p => (p.depot || 0) + (p.konten || 0)) },
+          { name: "Immobilien netto", farbe: css("--s4"), werte: vl.map(p => (p.immo || 0) + (p.darlehen || 0)) }] })
+        : leer("Noch keine Daten – Dokumente in den Ordner „Eingang“ legen."),
+      "Depots vor dem ersten Kontoauszug aus den Transaktionen geschätzt · Immobilien ab Kauf mit Tilgung")
+    + card("Zusammensetzung heute", hbalken([["Depot", "Depot & Kapitalanlage", t.Depot], ["Konten", "Konten", t.Konten], ["netto", "Immobilien netto", immoNetto],
+        ["wert", "Immobilien (Wert)", t["Immobilien (Wert)"]], ["darlehen", "Darlehen", t.Darlehen], ["vorsorge", "Vorsorge", vk + vlg]]
+        .filter(x => x[2]).map(([, l, w]) => ({ label: l, wert: w, farbe: w < 0 ? S2 : S1 })))) + `</div>`;
+  h += `<div class="grid two">` + card("Privat: Einnahmen und Ausgaben",
+      V.cashflow.length ? legende([{ name: "Einnahmen", farbe: S1 }, { name: "Ausgaben", farbe: S2 }]) + platz("c-cf", { labels: V.cashflow.map(c => c.m), art: "balken", xfmt: monat, serien: [{ name: "Einnahmen", farbe: S1, werte: V.cashflow.map(c => c.ein) }, { name: "Ausgaben", farbe: S2, werte: V.cashflow.map(c => c.aus) }] }) : leer("Kommt mit dem ersten Kontoumsatz-Export (CSV)."))
+    + card("Ausgaben nach Kategorie", V.kategorien.length ? hbalken(V.kategorien.map(k => ({ label: k.k, wert: k.b }))) : leer("–"), "letzte 12 Monate, privat") + `</div>`;
+  $("#vermoegen").innerHTML = h;
+  $("#seg")?.addEventListener("click", e => { const m = +e.target.dataset.m; if (m) { zeitraum = m; zeichneVermoegen(D); requestAnimationFrame(diagrammeZeichnen); } });
+  document.querySelectorAll(".kachel").forEach(b => b.onclick = () => {
+    const z = b.dataset.ziel;
+    if (z === "immobilien") tabWechseln("immobilien");
+    else if (z === "vorsorge") { vZeigen("konten"); setTimeout(() => document.getElementById("v-vorsorge")?.scrollIntoView({ behavior: "smooth" }), 50); }
+    else vZeigen(z);
+  });
+}
+
+function zeichneKonten(D) {
+  const S1 = css("--s1"), S2 = css("--s2");
+  const K = D.vermoegen.konten;
+  const gruppen = [["Konten", K.filter(k => k.art === "giro" || k.art === "tagesgeld"), "v-konten"],
+                   ["Vorsorge – kurzfristig verfügbar", K.filter(k => k.art === "vorsorge" && k.vorsorge === "kurzfristig"), "v-vorsorge"],
+                   ["Vorsorge – langfristig", K.filter(k => k.art === "vorsorge" && k.vorsorge !== "kurzfristig"), "v-vorsorge-l"]];
+  let h = zurueck();
+  for (const [titel, liste, id] of gruppen) {
+    if (!liste.length) continue;
+    liste.sort((a, b) => (b.saldo || 0) - (a.saldo || 0));
+    const summe = liste.reduce((a, k) => a + (k.saldo || 0), 0);
+    h += `<div class="card" id="${id}"><h2>${titel} <span style="float:right">${eur(summe)}</span></h2>` + tabelle([["Konto"], ["Zins", 1], ["Stand", 1], ["vom", 1]],
+      liste.map(k => [esc(k.name) + (k.bewegungen.length || k.verlauf.length > 1 ? " ›" : ""), k.zins != null ? pct(k.zins) + " p.a." : "", eur(k.saldo), datumDe(k.datum)])) + `</div>`;
+  }
+  const det = K.filter(k => k.art !== "depot" && (k.bewegungen.length || k.verlauf.length > 1));
+  if (det.length) {
+    if (kontoWahl >= det.length) kontoWahl = 0;
+    const k = det[kontoWahl];
+    h += `<div class="card" id="v-detail"><h2>Entwicklung je Konto</h2><div class="seg wrap" id="seg-konto">${det.map((x, i) =>
+      `<button data-i="${i}" aria-pressed="${i === kontoWahl}">${esc(x.name)}</button>`).join("")}</div>`;
+    if (k.verlauf.length > 1) h += `<h2 style="margin-top:14px">Kontostand</h2>` + platz("c-ks", { labels: k.verlauf.map(x => x.d), xfmt: d => datumDe(d).slice(3), nullLinie: false,
+      serien: [{ name: "Kontostand", farbe: S1, werte: k.verlauf.map(x => x.w) }] });
+    if (k.bewegungen.length) {
+      const jahre = {};
+      k.bewegungen.forEach(b => { const j = b.m.slice(0, 4); jahre[j] = jahre[j] || { ein: 0, aus: 0, n: 0 }; jahre[j].ein += b.ein; jahre[j].aus += b.aus; });
+      const JL = Object.keys(jahre).sort();
+      h += `<h2 style="margin-top:14px">Ein- und Ausgänge pro Jahr</h2>` + legende([{ name: "Eingänge", farbe: S1 }, { name: "Ausgänge", farbe: S2 }])
+        + platz("c-kj", { labels: JL, art: "balken", serien: [{ name: "Eingänge", farbe: S1, werte: JL.map(j => jahre[j].ein) }, { name: "Ausgänge", farbe: S2, werte: JL.map(j => jahre[j].aus) }] })
+        + tabelle([["Jahr"], ["Eingänge", 1], ["Ausgänge", 1], ["Saldo", 1]], JL.slice().reverse().map(j => [j, eur(jahre[j].ein), eur(jahre[j].aus), eur(jahre[j].ein - jahre[j].aus)]));
+      const M = k.bewegungen.slice(-24);
+      h += `<h2 style="margin-top:14px">Letzte 24 Monate</h2>` + platz("c-km", { labels: M.map(b => b.m), xfmt: monat, art: "balken",
+        serien: [{ name: "Eingänge", farbe: S1, werte: M.map(b => b.ein) }, { name: "Ausgänge", farbe: S2, werte: M.map(b => b.aus) }] });
+    } else h += leer("Für Ein- und Ausgänge die Umsätze dieses Kontos als CSV in den Eingang legen.");
+    h += `<div class="sub" style="margin-top:8px">ohne Umbuchungen zwischen eigenen Konten</div></div>`;
+  }
+  $("#vermoegen").innerHTML = h;
+  $("#v-zurueck").onclick = () => vZeigen("uebersicht");
+  document.querySelectorAll("#seg-konto button").forEach(b => b.onclick = () => { kontoWahl = +b.dataset.i; zeichneKonten(D); requestAnimationFrame(diagrammeZeichnen); });
+  const namen = [...document.querySelectorAll("#seg-konto button")].map(b => b.textContent);
+  document.querySelectorAll("#vermoegen .card[id^=v-k], #vermoegen .card[id^=v-v]").forEach(c => c.querySelectorAll("tbody tr").forEach(tr => {
+    const i = namen.indexOf(tr.cells[0].textContent.replace(/ ›$/, ""));
+    if (i < 0) return;
+    tr.classList.add("klick");
+    tr.onclick = () => { kontoWahl = i; zeichneKonten(D); requestAnimationFrame(diagrammeZeichnen); document.getElementById("v-detail").scrollIntoView({ behavior: "smooth" }); };
+  }));
+}
+
 function zeichneDepots(D) {
   const S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3"), S4 = css("--s4");
   const L = D.depots || [];
-  if (!L.length) { $("#depots").innerHTML = card("", leer("Noch keine Depotdaten. Transaktionen (z.B. Scalable-CSV) oder FNZ-Wertentwicklung in den Eingang legen.")); return; }
-  depotWahl = Math.min(depotWahl, L.length - 1);
-  const dp = L[depotWahl];
+  let h = zurueck();
+  if (!L.length) { $("#vermoegen").innerHTML = h + card("", leer("Noch keine Depotdaten.")); $("#v-zurueck").onclick = () => vZeigen("uebersicht"); return; }
+  if (depotWahl >= L.length) depotWahl = -1;
   const gesamt = L.reduce((a, d) => a + (d.wert || 0), 0);
-  let h = `<div class="card" style="padding:10px 12px"><div class="seg" id="seg-depot" style="float:none;display:flex;flex-wrap:wrap">${L.map((d, i) =>
-    `<button data-i="${i}" aria-pressed="${i === depotWahl}">${esc(d.name)} · ${kurz(d.wert || 0)} €</button>`).join("")}</div>
-    <div class="sub" style="margin:8px 0 0">Alle Depots zusammen: <b>${eur(gesamt)}</b></div></div>`;
+  const mitE = L.filter(d => d.eingezahlt != null && d.wert != null);
+  const einz = mitE.reduce((a, d) => a + d.eingezahlt, 0), gew = mitE.reduce((a, d) => a + d.wert - d.eingezahlt, 0);
+  const ertr = L.reduce((a, d) => a + (d.ertraege || 0), 0), real = L.reduce((a, d) => a + (d.realisiert || 0), 0);
+  const dp = depotWahl >= 0 ? L[depotWahl] : null;
   h += `<div class="grid kpis">
-    ${kpi("Depotwert", eur(dp.wert), dp.datum ? "Stand " + datumDe(dp.datum) : "")}
-    ${kpi("Eingezahlt (netto)", eur(dp.eingezahlt), "Einzahlungen minus Auszahlungen")}
-    ${kpi("Gewinn", eur(dp.gewinn), dp.eingezahlt ? pct(dp.gewinn / dp.eingezahlt * 100) + " auf eingezahlt" : "")}
-    ${dp.rendite_pa != null ? kpi("Rendite p.a.", pct(dp.rendite_pa), "laut FNZ") : kpi("Erträge gesamt", eur(dp.ertraege), "Dividenden und Zinsen, realisiert " + eur(dp.realisiert))}</div>`;
-  const J = dp.jahre || [];
-  if (J.length) {
-    h += card("Pro Jahr nach Buchungsdatum", legende([{ name: "Einzahlungen", farbe: S1 }, { name: "Käufe", farbe: S4 }, { name: "Erträge", farbe: S3 }, { name: "Auszahlungen", farbe: S2 }])
+    ${kpi(dp ? "Depotwert" : "Alle Depots", eur(dp ? dp.wert : gesamt), dp ? (dp.datum ? "Stand " + datumDe(dp.datum) : "") : L.length + " Depots & Anlagen")}
+    ${kpi("Eingezahlt (netto)", eur(dp ? dp.eingezahlt : mitE.length ? einz : null), dp ? "Einzahlungen minus Auszahlungen" : `bei ${mitE.length} Depots mit bekannter Einzahlung`)}
+    ${kpi("Gewinn", eur(dp ? dp.gewinn : mitE.length ? gew : null), (dp ? dp.eingezahlt : einz) ? pct((dp ? dp.gewinn : gew) / (dp ? dp.eingezahlt : einz) * 100) + " auf eingezahlt" : "")}
+    ${dp && dp.rendite_pa != null ? kpi("Rendite p.a.", pct(dp.rendite_pa)) : kpi("Erträge gesamt", eur(dp ? dp.ertraege : ertr), "Dividenden und Zinsen, realisiert " + eur(dp ? dp.realisiert : real))}</div>`;
+  h += `<div class="card" style="padding:10px 12px"><div class="seg wrap" id="seg-depot"><button data-i="-1" aria-pressed="${depotWahl === -1}">Alle · ${kurz(gesamt)} €</button>${L.map((d, i) =>
+    `<button data-i="${i}" aria-pressed="${i === depotWahl}">${esc(d.name)} · ${kurz(d.wert || 0)} €</button>`).join("")}</div></div>`;
+  if (!dp) {
+    // alle Positionen über alle Depots, nach Größe
+    const alle = [];
+    L.forEach(d => {
+      if (d.positionen.length) d.positionen.forEach(p => alle.push({ ...p, depot: d.name }));
+      else if (d.wert) alle.push({ name: d.name, depot: d.name, wert: d.wert, investiert: d.eingezahlt, gewinn: d.gewinn });
+    });
+    alle.sort((a, b) => (b.wert || 0) - (a.wert || 0));
+    h += card(`Alle Positionen (${alle.length}) nach Größe`, tabelle([["Position"], ["Wert", 1], ["Anteil", 1], ["Gewinn", 1], ["Depot"]],
+      alle.map(p => [esc(p.name), eur(p.wert), pct((p.wert || 0) / gesamt * 100), eur(p.gewinn), `<span style="color:var(--t3)">${esc(p.depot)}</span>`])),
+      "Gesamtrisiko: wo am meisten Geld steckt – unabhängig vom Depot");
+    h += card("Depots im Überblick", tabelle([["Depot"], ["Wert", 1], ["Eingezahlt", 1], ["Gewinn", 1], ["Stand", 1]],
+      L.map(d => [esc(d.name), eur(d.wert), eur(d.eingezahlt), eur(d.gewinn), datumDe(d.datum)])));
+  } else {
+    const J = dp.jahre || [];
+    if (J.length) h += card("Pro Jahr nach Buchungsdatum", legende([{ name: "Einzahlungen", farbe: S1 }, { name: "Käufe", farbe: S4 }, { name: "Erträge", farbe: S3 }, { name: "Auszahlungen", farbe: S2 }])
       + platz("c-dpj", { labels: J.map(j => String(j.jahr)), art: "balken", serien: [
           { name: "Einzahlungen", farbe: S1, werte: J.map(j => j.einzahlung) }, { name: "Käufe", farbe: S4, werte: J.map(j => j.kauf + j.wiederanlage) },
           { name: "Erträge", farbe: S3, werte: J.map(j => j.ertrag) }, { name: "Auszahlungen", farbe: S2, werte: J.map(j => j.auszahlung) }] })
       + tabelle([["Jahr"], ["Einzahlungen", 1], ["Auszahlungen", 1], ["Käufe", 1], ["Wiederanlage", 1], ["Verkäufe", 1], ["Erträge", 1], ["Gebühren", 1], ["Steuern", 1], ["Buchungen", 1]],
           J.slice().reverse().map(j => [j.jahr, eur(j.einzahlung), eur(j.auszahlung), eur(j.kauf), eur(j.wiederanlage), eur(j.verkauf), eur(j.ertrag), eur(j.gebuehr), eur(j.steuer), j.anzahl])));
+    const EV = dp.einzahlungen_verlauf || [], WG = Object.fromEntries((dp.wert_geschaetzt || []).map(x => [x.m, x.w]));
+    if (EV.length > 1) {
+      const wv = Object.fromEntries((dp.wert_verlauf || []).map(x => [x.d.slice(0, 7), x.w]));
+      h += card("Eingezahlt und Depotwert im Verlauf", legende([{ name: "Eingezahlt (netto)", farbe: S4 }, { name: "Depotwert (geschätzt)", farbe: S1 }])
+        + platz("c-dpv", { labels: EV.map(x => x.m), xfmt: monat, nullLinie: false, serien: [
+            { name: "Eingezahlt (netto)", farbe: S4, werte: EV.map(x => x.netto) },
+            { name: "Depotwert (geschätzt)", farbe: S1, werte: EV.map(x => wv[x.m] ?? WG[x.m] ?? null) }] }),
+        "Depotwert = Bestand × letzter bekannter Kurs aus den Transaktionen, ab Kontoauszug echte Stände");
+    }
+    if ((dp.perf || []).length > 2) h += card("Wertentwicklung seit Kauf (%)", platz("c-perf", { labels: dp.perf.map(x => x.d), xfmt: d => datumDe(d).slice(3), nullLinie: true,
+      serien: [{ name: "Wertentwicklung %", farbe: S3, werte: dp.perf.map(x => x.p) }] }), "laut Depotbank");
+    const P = dp.positionen || [];
+    if (P.length) h += card(`Positionen (${P.length})`, tabelle([["Wertpapier"], ["Stück", 1], ["Investiert", 1], ["Wert", 1], ["Gewinn", 1], ["Rendite", 1]],
+        P.map(p => [esc(p.name), p.stueck != null ? (+p.stueck).toLocaleString("de-DE", { maximumFractionDigits: 4 }) : "", eur(p.investiert), eur(p.wert), eur(p.gewinn),
+          p.rendite != null ? pct(p.rendite) : p.rendite_pa != null ? pct(p.rendite_pa) + " p.a." : ""])) + `<div id="kurs-box"></div>`,
+        (dp.quelle_positionen ? "Quelle: " + dp.quelle_positionen + " · " : "") + "Zeile antippen für Kursverlauf");
   }
-  const EV = dp.einzahlungen_verlauf || [];
-  if (EV.length > 1) {
-    const wv = Object.fromEntries((dp.wert_verlauf || []).map(x => [x.d.slice(0, 7), x.w]));
-    h += card("Eingezahlt und Depotwert im Verlauf", legende([{ name: "Eingezahlt (netto)", farbe: S4 }, { name: "Depotwert", farbe: S1 }])
-      + platz("c-dpv", { labels: EV.map(x => x.m), xfmt: monat, nullLinie: false, serien: [
-          { name: "Eingezahlt (netto)", farbe: S4, werte: EV.map(x => x.netto) }, { name: "Depotwert", farbe: S1, werte: EV.map(x => wv[x.m] ?? null) }] }),
-      "Depotwerte kommen aus Screenshots/Auszügen – je mehr davon, desto vollständiger die Kurve");
-  }
-  const P = dp.positionen || [];
-  if (P.length) {
-    const fnz = dp.quelle_positionen.startsWith("Wertentwicklung");
-    h += card(`Positionen (${P.length})`, tabelle(
-      fnz ? [["Fonds"], ["Wert", 1], ["Eingezahlt", 1], ["Gewinn", 1], ["p.a.", 1]] : [["Wertpapier"], ["Stück", 1], ["Investiert", 1], ["Wert", 1], ["Gewinn", 1], ["Rendite", 1], ["Kurs vom", 1]],
-      P.map(p => fnz ? [esc(p.name), eur(p.wert), eur(p.investiert), eur(p.gewinn), pct(p.rendite_pa)]
-        : [esc(p.name), (p.stueck || 0).toLocaleString("de-DE", { maximumFractionDigits: 4 }), eur(p.investiert), eur(p.wert), eur(p.gewinn), pct(p.rendite), datumDe(p.kurs_datum)]))
-      .replace(/<tbody><tr>/, "<tbody><tr>").replace(/<tr>(?=<td)/g, (m, o) => m) + (fnz ? "" : `<div id="kurs-box"></div>`),
-      fnz ? `Quelle: ${dp.quelle_positionen}` : `Wert = Stück × letzter Kurs aus den Transaktionen · Summe ${eur(dp.summe_positionen)} (Depotwert laut Outbank ${eur(dp.wert)}) · Zeile antippen für Kursverlauf`);
-  }
-  $("#depots").innerHTML = h;
-  document.querySelectorAll("#seg-depot button").forEach(b => b.onclick = () => { depotWahl = +b.dataset.i; posWahl = null; zeichneDepots(D); requestAnimationFrame(diagrammeZeichnen); });
-  if (P.length && !dp.quelle_positionen.startsWith("Wertentwicklung")) {
-    const zeilenEls = document.querySelectorAll("#depots table:last-of-type tbody tr");
+  $("#vermoegen").innerHTML = h;
+  $("#v-zurueck").onclick = () => vZeigen("uebersicht");
+  document.querySelectorAll("#seg-depot button").forEach(b => b.onclick = () => { depotWahl = +b.dataset.i; zeichneDepots(D); requestAnimationFrame(diagrammeZeichnen); });
+  if (dp && (dp.positionen || []).length) {
+    const zeilenEls = document.querySelectorAll("#vermoegen .card:last-of-type tbody tr");
     zeilenEls.forEach((tr, i) => {
       tr.classList.add("klick");
       tr.onclick = () => {
         zeilenEls.forEach(x => x.classList.remove("aktiv")); tr.classList.add("aktiv");
-        const p = P[i], k = p.kurse || [];
-        const box = $("#kurs-box");
-        if (k.length < 2) { box.innerHTML = leer("Zu wenige Kurse in den Transaktionen für einen Verlauf."); return; }
+        const p = dp.positionen[i], k = p.kurse || [], box = $("#kurs-box");
+        if (k.length < 2) { box.innerHTML = leer("Für diese Position gibt es zu wenige Kurse für einen Verlauf."); return; }
         box.innerHTML = `<h2 style="margin-top:14px">${esc(p.name)} – Kursverlauf</h2><div class="chart" id="c-kurs"></div>`;
         plaetze["c-kurs"] = { labels: k.map(x => x.d), xfmt: d => datumDe(d).slice(3), nullLinie: false, serien: [{ name: "Kurs", farbe: S1, werte: k.map(x => x.k) }] };
         diagramm($("#c-kurs"), plaetze["c-kurs"]);
@@ -345,35 +459,12 @@ function zeichnen() {
   const D = DATEN, S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3"), S4 = css("--s4");
   $("#stand").textContent = "Stand " + datumDe(D.stand.slice(0, 10)) + ", " + D.stand.slice(11, 16) + " Uhr";
 
-  // ---------- Vermögen
-  const V = D.vermoegen, t = V.teile;
-  const vl = V.verlauf.slice(-zeitraum - 1);
-  let h = `<div class="grid kpis">
-    ${kpi("Nettovermögen", eur(V.netto), delta(V.netto, V.netto_vorjahr) ? delta(V.netto, V.netto_vorjahr) + " zum Vorjahr" : "")}
-    ${kpi("Immobilien netto", eur((t["Immobilien (Wert)"] || 0) + (t.Darlehen || 0)), "Wert " + kurz(t["Immobilien (Wert)"] || 0) + " € − Darlehen " + kurz(-(t.Darlehen || 0)) + " €")}
-    ${kpi("Konten & Depot", eur((t.Konten || 0) + (t.Depot || 0)))}
-    ${kpi("Vorsorge", eur(t.Vorsorge || 0), V.sparquote != null ? "Sparquote 12 Monate: " + pct(V.sparquote) : "")}
-  </div>`;
-  h += `<div class="grid two">` + card(`Nettovermögen im Verlauf <span class="seg" id="seg">${[[12, "1J"], [36, "3J"], [60, "5J"], [120, "10J"]].map(([m, l]) => `<button data-m="${m}" aria-pressed="${m === zeitraum}">${l}</button>`).join("")}</span>`,
-      vl.length ? platz("c-netto", { labels: vl.map(p => p.d.slice(0, 7)), serien: [{ name: "Nettovermögen", farbe: S1, werte: vl.map(p => p.netto) }], xfmt: monat, nullLinie: false }) : leer("Noch keine Daten – Dokumente in den Ordner „Eingang“ legen."))
-    + card("Zusammensetzung heute", hbalken([["Immobilien (Wert)", "Immobilien"], ["Konten", "Konten"], ["Depot", "Depot"], ["Vorsorge", "Vorsorge"], ["Darlehen", "Darlehen"]]
-        .filter(([k]) => t[k]).map(([k, l]) => ({ label: l, wert: t[k], farbe: t[k] < 0 ? S2 : S1 }))) || leer("–")) + `</div>`;
-  h += `<div class="grid two">` + card("Privat: Einnahmen und Ausgaben",
-      V.cashflow.length ? legende([{ name: "Einnahmen", farbe: S1 }, { name: "Ausgaben", farbe: S2 }]) + platz("c-cf", { labels: V.cashflow.map(c => c.m), art: "balken", xfmt: monat, serien: [{ name: "Einnahmen", farbe: S1, werte: V.cashflow.map(c => c.ein) }, { name: "Ausgaben", farbe: S2, werte: V.cashflow.map(c => c.aus) }] }) : leer("Kommt mit dem ersten Kontoumsatz-Export (CSV)."))
-    + card("Ausgaben nach Kategorie", V.kategorien.length ? hbalken(V.kategorien.map(k => ({ label: k.k, wert: k.b }))) : leer("–"), "letzte 12 Monate, privat") + `</div>`;
-  const ARTEN = { giro: "Girokonto", tagesgeld: "Spar-/Tagesgeld", depot: "Depot", vorsorge: "Vorsorge & Sonstiges" };
-  if (V.konten.length) h += card("Konten und Verträge", tabelle([["Konto"], ["Art"], ["Bereich"], ["Zins", 1], ["Stand", 1], ["vom", 1]],
-    V.konten.slice().sort((a, b) => (b.saldo || 0) - (a.saldo || 0)).map(k => [esc(k.name), ARTEN[k.art] || esc(k.art),
-      k.bereich === "geschaeft" ? "Geschäft" : "Privat", k.zins != null ? pct(k.zins) + " p.a." : "", eur(k.saldo), datumDe(k.datum)])));
-  $("#vermoegen").innerHTML = h;
-  $("#seg")?.addEventListener("click", e => { const m = +e.target.dataset.m; if (m) { zeitraum = m; zeichnen(); } });
-
-  // ---------- Depots
-  zeichneDepots(D);
+  // ---------- Vermögen (Übersicht oder Unterseite Konten / Depots)
+  zeichneVermoegen(D);
 
   // ---------- Geschäft
   const G = D.geschaeft, gj = G.jahre, letzt = gj[gj.length - 1], vorj = gj[gj.length - 2];
-  h = "";
+  let h = "";
   if (!gj.length && !G.bwa.length && !G.cashflow.length) h = card("", leer("Noch keine Geschäftszahlen. EÜR, GuV, Jahresabschlüsse oder BWAs in den Eingang legen.<br>Kontoumsätze des Geschäftskontos in einen Unterordner „Geschäft“ im Eingang legen."));
   else {
     const teil = letzt && letzt.monate < 12, vgl = vorj && !teil;
@@ -434,7 +525,8 @@ function zeichnen() {
       <dt>Kaltmiete / Monat</dt><dd>${eur(o.miete)}</dd><dt>Rate / Monat</dt><dd>${eur(o.rate)}</dd><dt>Kosten / Jahr</dt><dd>${eur(o.kosten)}</dd>
       <dt>Cashflow / Monat</dt><dd>${eur(o.cashflow)}</dd><dt>Brutto- / Nettorendite</dt><dd>${pct(o.brutto)} / ${pct(o.netto)}</dd>
       <dt>Zinsbindung bis</dt><dd>${o.zinsbindung ? o.zinsbindung.slice(5, 7) + "/" + o.zinsbindung.slice(0, 4) : "–"}</dd>
-      <dt>Kaufpreis</dt><dd>${eur(o.kaufpreis)}${o.kaufdatum ? " (" + o.kaufdatum.slice(0, 4) + ")" : ""}</dd>
+      <dt>Kaufpreis</dt><dd>${eur(o.kaufpreis)}</dd>
+      <dt>Kauf</dt><dd>${o.kaufdatum ? datumDe(o.kaufdatum) : o.kaufdatum_geschaetzt ? "ca. " + o.kaufdatum_geschaetzt.slice(5, 7) + "/" + o.kaufdatum_geschaetzt.slice(0, 4) : "–"}</dd>
       <dt>Wertbasis</dt><dd>${esc(o.wertquelle || "–")}</dd></dl>
       ${o.fehlt ? `<div class="fehlt">Fehlt noch: ${esc(o.fehlt)}</div>` : ""}</div>`).join("")}</div>`;
     $("#immobilien").innerHTML = h;
