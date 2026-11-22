@@ -21,7 +21,7 @@
   --bg: #f6f6f4; --card: #fcfcfb; --line: #e6e5e0; --grid: #ecebe7;
   --t1: #0b0b0b; --t2: #52514e; --t3: #8a8985;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
-  --warn-bg: #fff4e0; --warn-t: #7a4a00; --rot: #c8452c;
+  --warn-bg: #fff4e0; --warn-t: #7a4a00; --rot: #c8452c; --gruen-bg: #eef8f1; --gruen-rand: #c9e8d3; --gruen: #13895f;
   --radius: 14px;
 }
 @media (prefers-color-scheme: dark) {
@@ -30,7 +30,7 @@
     --bg: #151514; --card: #1e1e1d; --line: #2e2e2c; --grid: #2a2a28;
     --t1: #f0efec; --t2: #c3c2b7; --t3: #8f8e86;
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-    --warn-bg: #3a2c12; --warn-t: #f3d49a; --rot: #f0846b;
+    --warn-bg: #3a2c12; --warn-t: #f3d49a; --rot: #f0846b; --gruen-bg: #16281e; --gruen-rand: #24452f; --gruen: #4fcf96;
   }
 }
 * { box-sizing: border-box; }
@@ -87,9 +87,13 @@ button.ozeile { display: grid; grid-template-columns: minmax(96px, 38%) 1fr; gap
 .bahn { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; min-width: 18px; }
 .bahn span { display: block; height: 100%; }
 .ozahl { font-size: 12px; color: var(--t2); margin-top: 4px; white-space: nowrap; } .ozahl b { color: var(--t1); }
-button.kachel-obj { text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+button.kachel-obj { display: block; text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
 button.kachel-obj:hover { border-color: var(--s1); }
 .pfeil { color: var(--s1); float: right; }
+button.kachel-verkauft { display: block; align-self: stretch; text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; background: var(--gruen-bg); border-color: var(--gruen-rand); }
+button.kachel-verkauft.klein { margin-top: 8px; }
+.verkauft-kopf { background: var(--gruen-bg); border-color: var(--gruen-rand); }
+.gruen { color: var(--gruen); }
 .wq { color: var(--t3); font-size: 12px; margin-top: 8px; }
 .fotos { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; }
 .fotos img { height: 220px; border-radius: 12px; scroll-snap-align: start; object-fit: cover; }
