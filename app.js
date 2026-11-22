@@ -217,7 +217,9 @@ function diagramm(el, { labels, serien, art = "linie", hoehe = 230, xfmt = x => 
   if (art === "stapel") werte = labels.flatMap((_, i) => [sicht.reduce((a, s) => a + Math.max(0, s.werte[i] || 0), 0), sicht.reduce((a, s) => a + Math.min(0, s.werte[i] || 0), 0)]);
   let mn = Math.min(...werte), mx = Math.max(...werte);
   if (art !== "linie" || nullLinie) { mn = Math.min(0, mn); mx = Math.max(0, mx); }
-  const ax = achse(mn, mx), y = v => T + ih - (v - ax.lo) / (ax.hi - ax.lo) * ih;
+  const ax = achse(mn, mx);
+  if (ax.lo < 0 && mn < 0 && -mn < ax.hi * 0.06) { ax.lo = mn * 1.6; ax.ticks = ax.ticks.filter(t => t >= 0); }   // kleiner Verlust: kein halbleeres Diagramm
+  const y = v => T + ih - (v - ax.lo) / (ax.hi - ax.lo) * ih;
   const band = iw / n, x = i => L + (art === "linie" ? (n === 1 ? iw / 2 : i * iw / (n - 1)) : band * (i + 0.5));
   let s = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img">`;
   for (const t of ax.ticks) s += `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="${t === 0 ? css("--t3") : css("--grid")}" stroke-width="1"/>
@@ -430,6 +432,11 @@ function zeichneDepots(D) {
       else if (d.wert) alle.push({ name: d.name, depot: d.name, wert: d.wert, investiert: d.eingezahlt, gewinn: d.gewinn });
     });
     alle.sort((a, b) => (b.wert || 0) - (a.wert || 0));
+    // Wertentwicklung aller Depots zusammen (aus dem Vermögensverlauf)
+    const vv = (D.vermoegen.verlauf || []).filter(p => p.depot);
+    if (vv.length > 1) h += card("Wertentwicklung aller Depots", platz("c-dpall", { labels: vv.map(p => p.d.slice(0, 7)), xfmt: monat, nullLinie: false,
+        serien: [{ name: "Depot & Kapitalanlage", farbe: S1, werte: vv.map(p => p.depot) }] }),
+      "Monatsende · vor dem ersten Depotauszug aus den Transaktionen geschätzt; Depots ohne Transaktionen (z.B. VB, FFB, Bison) zählen erst ab ihrem ersten bekannten Stand");
     h += card(`Alle Positionen (${alle.length}) nach Größe`, tabelle([["Position"], ["Wert", 1], ["Anteil", 1], ["Gewinn", 1], ["Depot"]],
       alle.map(p => [esc(p.name), eur(p.wert), pct((p.wert || 0) / gesamt * 100), eur(p.gewinn), `<span style="color:var(--t3)">${esc(p.depot)}</span>`])),
       "Gesamtrisiko: wo am meisten Geld steckt – unabhängig vom Depot");
@@ -590,6 +597,9 @@ function zeichneGeschaeft(D) {
   $("#g-einnahmen").innerHTML = card(`Wichtige Auftraggeber <span class="seg" id="seg-hk">${["12", ...hjJahre].map(k => `<button data-k="${k}" aria-pressed="${k === hkJahr}">${k === "12" ? "12 Mon." : k}</button>`).join("")}</span>`,
       l.length ? hbalken(l.map(x => ({ label: x.name, wert: x.betrag, zusatz: pct(x.anteil, 0) }))) : leer("Keine Einnahmen im Zeitraum."),
       "Zahlungseingänge Geschäftskonto, ohne eigene Überweisungen und Umbuchungen – nicht gleich Umsatz")
+    + (gj.some(j => (j.einnahmen_posten || []).length > 2) ? card("Einnahmen laut EÜR je Gesellschaft", tabelle([["Jahr"], ["Gesellschaft"], ["Einnahmen", 1]],
+        gj.filter(j => (j.einnahmen_posten || []).length > 2).slice().reverse().flatMap(j => j.einnahmen_posten.map(e => [j.jahr, esc(e.name), eur(e.betrag)]))),
+        "aus den Einnahme-Überschuss-Rechnungen (belegte Werte)") : "")
     + card("Auswertung nach Geschäftsfeld", leer("Folgt, sobald die Eingänge sauber Geschäftsfeldern (z.B. Versicherung, Investment, Finanzierung) zugeordnet sind."));
   document.querySelectorAll("#seg-hk button").forEach(b => b.onclick = () => { hkJahr = b.dataset.k; zeichneGeschaeft(D); });
 }
