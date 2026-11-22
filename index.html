@@ -21,7 +21,7 @@
   --bg: #f6f6f4; --card: #fcfcfb; --line: #e6e5e0; --grid: #ecebe7;
   --t1: #0b0b0b; --t2: #52514e; --t3: #8a8985;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
-  --warn-bg: #fff4e0; --warn-t: #7a4a00;
+  --warn-bg: #fff4e0; --warn-t: #7a4a00; --rot: #c8452c;
   --radius: 14px;
 }
 @media (prefers-color-scheme: dark) {
@@ -30,7 +30,7 @@
     --bg: #151514; --card: #1e1e1d; --line: #2e2e2c; --grid: #2a2a28;
     --t1: #f0efec; --t2: #c3c2b7; --t3: #8f8e86;
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-    --warn-bg: #3a2c12; --warn-t: #f3d49a;
+    --warn-bg: #3a2c12; --warn-t: #f3d49a; --rot: #f0846b;
   }
 }
 * { box-sizing: border-box; }
@@ -45,8 +45,14 @@ h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
 button { font: inherit; cursor: pointer; }
 .icon-btn { background: none; border: 1px solid var(--line); color: var(--t2); border-radius: 10px; padding: 6px 10px; font-size: 13px; }
 nav { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 0 10px; margin-bottom: 4px; }
-.tabs { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--line); border-radius: 11px; padding: 3px; gap: 3px; }
-.tabs button { border: 0; background: none; color: var(--t2); padding: 8px 2px; border-radius: 9px; font-size: 14px; font-weight: 500; }
+.bereiche { display: inline-flex; background: var(--line); border-radius: 999px; padding: 3px; gap: 2px; margin-bottom: 8px; }
+.bereiche button { border: 0; background: none; color: var(--t2); padding: 5px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600; }
+.bereiche button[aria-selected="true"] { background: var(--t1); color: var(--bg); }
+.g-kopf { display: grid; gap: 10px; margin-bottom: 12px; }
+.g-kopf .jahre { justify-self: start; float: none; }
+.hinweis { color: var(--t3); font-size: 12.5px; padding: 0 2px; }
+.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--line); border-radius: 11px; padding: 3px; gap: 3px; }
+.tabs button { border: 0; background: none; color: var(--t2); padding: 8px 2px; border-radius: 9px; font-size: 14px; font-weight: 500; line-height: 1.2; }
 @media (max-width: 420px) { .tabs button { font-size: 12.5px; } }
 .hero { text-align: center; padding: 20px 16px; }
 .hero .l { color: var(--t2); font-size: 14px; } .hero .v { font-size: 38px; font-weight: 700; letter-spacing: -0.02em; margin: 2px 0; }
@@ -55,6 +61,40 @@ button.kachel { display: block; text-align: left; align-self: stretch; font: inh
 button.kachel:hover { border-color: var(--s1); }
 button.kachel .l { color: var(--s1); }
 .seg.wrap { float: none; display: flex; flex-wrap: wrap; gap: 4px; }
+.rot { color: var(--rot); font-size: 12.5px; }
+.ok { color: var(--s3); font-weight: 600; }
+.fehlwert { color: var(--t3); font-style: italic; font-size: 12.5px; }
+.abg { color: var(--s4); font-weight: 700; cursor: help; }
+.klein { color: var(--t3); font-size: 11.5px; }
+.summe { margin: 8px 0 4px; font-size: 13.5px; }
+details.konten { border-top: 1px solid var(--line); padding: 6px 0; }
+details.konten summary { cursor: pointer; font-size: 13.5px; display: flex; justify-content: space-between; list-style: none; }
+details.konten summary::before { content: "›"; display: inline-block; width: 14px; transition: transform .15s; color: var(--t3); }
+details.konten[open] summary::before { transform: rotate(90deg); }
+details.konten summary span { margin-left: auto; font-weight: 600; }
+table.detail { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.detail td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+table.detail td.n { text-align: right; white-space: nowrap; padding-right: 0; }
+@media (max-width: 500px) { table.detail { font-size: 13px; } }
+.drei { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.nur-klein { display: none; }
+@media (max-width: 700px) { .nur-klein { display: block; } .nur-gross { display: none !important; } }
+.adr { color: var(--t3); font-size: 12.5px; }
+button.ozeile { display: grid; grid-template-columns: minmax(96px, 38%) 1fr; gap: 10px; align-items: center; width: 100%; text-align: left;
+  background: none; border: 0; border-top: 1px solid var(--line); padding: 10px 0; color: inherit; font: inherit; }
+.oname { font-size: 13.5px; font-weight: 600; line-height: 1.25; } .oname small { display: block; color: var(--t3); font-weight: 400; font-size: 11.5px; }
+.bahn { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; min-width: 18px; }
+.bahn span { display: block; height: 100%; }
+.ozahl { font-size: 12px; color: var(--t2); margin-top: 4px; white-space: nowrap; } .ozahl b { color: var(--t1); }
+button.kachel-obj { text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+button.kachel-obj:hover { border-color: var(--s1); }
+.pfeil { color: var(--s1); float: right; }
+.wq { color: var(--t3); font-size: 12px; margin-top: 8px; }
+.fotos { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; }
+.fotos img { height: 220px; border-radius: 12px; scroll-snap-align: start; object-fit: cover; }
+dl.dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 13.5px; }
+dl.dl dt { color: var(--t2); } dl.dl dd { margin: 0; text-align: right; }
+@media (min-width: 760px) { dl.dl.zwei { grid-template-columns: auto 1fr auto 1fr; } .zwei-spalten { grid-template-columns: 1fr 1fr; } }
 tr.klick { cursor: pointer; } tr.klick:hover td, tr.aktiv td { background: var(--grid); }
 .tabs button[aria-selected="true"] { background: var(--card); color: var(--t1); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .grid { display: grid; gap: 12px; }
@@ -149,16 +189,31 @@ footer details { margin-top: 6px; }
       <div><h1>Finanzen</h1><div class="stand" id="stand"></div></div>
       <div><button class="icon-btn" id="btn-neu">Aktualisieren</button> <button class="icon-btn" id="btn-sperren">Sperren</button></div>
     </header>
-    <nav><div class="tabs" role="tablist">
-      <button role="tab" data-tab="vermoegen" aria-selected="true">Vermögen</button>
-      <button role="tab" data-tab="geschaeft">Geschäft</button>
-      <button role="tab" data-tab="immobilien">Immobilien</button>
-      <button role="tab" data-tab="steuern">Steuern</button>
-    </div></nav>
+    <nav>
+      <div class="bereiche" role="tablist" aria-label="Bereich">
+        <button role="tab" data-bereich="privat" aria-selected="true">Privat</button>
+        <button role="tab" data-bereich="geschaeft" aria-selected="false">Geschäft</button>
+      </div>
+      <div class="tabs" role="tablist" id="tabs-privat">
+        <button role="tab" data-tab="vermoegen" aria-selected="true">Vermögen</button>
+        <button role="tab" data-tab="immobilien">Immobilien</button>
+        <button role="tab" data-tab="steuern">Steuern</button>
+      </div>
+      <div class="tabs" role="tablist" id="tabs-geschaeft" hidden>
+        <button role="tab" data-tab="g-cashflow">Cashflow</button>
+        <button role="tab" data-tab="g-abschluss" aria-selected="true">Steuern &amp; Abschlüsse</button>
+        <button role="tab" data-tab="g-mitarbeiter">Mitarbeiter</button>
+        <button role="tab" data-tab="g-einnahmen">Einnahme&shy;quellen</button>
+      </div>
+    </nav>
+    <div id="g-kopf" class="g-kopf" hidden></div>
     <section id="vermoegen" class="on"></section>
-    <section id="geschaeft"></section>
     <section id="immobilien"></section>
     <section id="steuern"></section>
+    <section id="g-cashflow"></section>
+    <section id="g-abschluss"></section>
+    <section id="g-mitarbeiter"></section>
+    <section id="g-einnahmen"></section>
     <footer id="fuss"></footer>
   </div>
 </div>
