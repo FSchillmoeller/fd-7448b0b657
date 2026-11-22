@@ -158,12 +158,24 @@ document.addEventListener("visibilitychange", () => {
   else if (DK) oeffnenMitDk(DK).catch(e => console.error(e));
 });
 
+let bereich = "privat";
+const letzterTab = { privat: "vermoegen", geschaeft: "g-abschluss" };
 document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
   if (b.dataset.tab === "vermoegen" && DATEN && vAnsicht !== "uebersicht") { vAnsicht = "uebersicht"; zeichneVermoegen(DATEN); }
-  document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
+  if (b.dataset.tab === "immobilien" && DATEN && immoDetail != null && b.getAttribute("aria-selected") === "true") { immoDetail = null; zeichneImmobilien(DATEN); }
+  const gruppe = b.closest(".tabs");
+  gruppe.querySelectorAll("button").forEach(x => x.setAttribute("aria-selected", x === b));
+  letzterTab[bereich] = b.dataset.tab;
   document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === b.dataset.tab));
   window.scrollTo({ top: 0 });
 });
+function bereichWechseln(neu) {
+  bereich = neu;
+  document.querySelectorAll(".bereiche button").forEach(x => x.setAttribute("aria-selected", x.dataset.bereich === neu));
+  $("#tabs-privat").hidden = neu !== "privat"; $("#tabs-geschaeft").hidden = neu !== "geschaeft"; $("#g-kopf").hidden = neu !== "geschaeft";
+  document.querySelector(`.tabs button[data-tab="${letzterTab[neu]}"]`).click();
+}
+document.querySelectorAll(".bereiche button").forEach(b => b.onclick = () => bereichWechseln(b.dataset.bereich));
 
 // ------------------------------------------------------------------ Format
 const fEur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -200,8 +212,9 @@ function achse(min, max) {
 function diagramm(el, { labels, serien, art = "linie", hoehe = 230, xfmt = x => x, nullLinie = true }) {
   const W = Math.max(el.clientWidth, 280), H = hoehe, L = 52, R = 8, T = 8, B = 24;
   const iw = W - L - R, ih = H - T - B, n = labels.length;
-  let werte = serien.flatMap(s => s.werte.filter(v => v != null));
-  if (art === "stapel") werte = labels.map((_, i) => serien.reduce((a, s) => a + Math.max(0, s.werte[i] || 0), 0));
+  const sicht = serien.filter(se => !se.nurTip);
+  let werte = sicht.flatMap(s => s.werte.filter(v => v != null));
+  if (art === "stapel") werte = labels.flatMap((_, i) => [sicht.reduce((a, s) => a + Math.max(0, s.werte[i] || 0), 0), sicht.reduce((a, s) => a + Math.min(0, s.werte[i] || 0), 0)]);
   let mn = Math.min(...werte), mx = Math.max(...werte);
   if (art !== "linie" || nullLinie) { mn = Math.min(0, mn); mx = Math.max(0, mx); }
   const ax = achse(mn, mx), y = v => T + ih - (v - ax.lo) / (ax.hi - ax.lo) * ih;
@@ -212,27 +225,34 @@ function diagramm(el, { labels, serien, art = "linie", hoehe = 230, xfmt = x => 
   const jede = Math.ceil(n / Math.max(2, Math.floor(iw / 62)));
   labels.forEach((lb, i) => { if (i % jede === 0 || (art === "linie" && i === n - 1 && n < 30)) s += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${xfmt(lb)}</text>`; });
   if (art === "linie") {
-    for (const se of serien) {
+    for (const se of sicht) {
       let d = "", an = false;
       se.werte.forEach((v, i) => { if (v == null) { an = false; return; } d += (an ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); an = true; });
-      s += `<path d="${d}" fill="none" stroke="${se.farbe}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-      if (n <= 16) se.werte.forEach((v, i) => { if (v != null) s += `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="${se.farbe}" stroke="${css("--card")}" stroke-width="2"/>`; });
+      if (!se.nurPunkte) s += `<path d="${d}" fill="none" stroke="${se.farbe}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${se.strich ? ` stroke-dasharray="${se.strich}"` : ""}/>`;
+      if (se.nurPunkte) se.werte.forEach((v, i) => { if (v != null) s += `<circle cx="${x(i)}" cy="${y(v)}" r="5" fill="${css("--card")}" stroke="${se.farbe}" stroke-width="2.5"/>`; });
+      else if (n <= 16) se.werte.forEach((v, i) => { if (v != null) s += `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="${se.farbe}" stroke="${css("--card")}" stroke-width="2"/>`; });
     }
   } else {
     const gap = 2, innen = Math.min(band * 0.72, 56);
     labels.forEach((_, i) => {
       if (art === "stapel") {
-        let basis = 0;
-        serien.forEach((se, k) => {
-          const v = Math.max(0, se.werte[i] || 0); if (!v) return;
-          const y1 = y(basis + v), y0 = y(basis), oben = k === serien.length - 1 || serien.slice(k + 1).every(z => !(z.werte[i] > 0));
+        let basis = 0, unten = 0;
+        sicht.forEach((se, k) => {
+          const roh = se.werte[i] || 0; if (!roh) return;
+          if (roh < 0) {   // negative Werte (z.B. Verlust) unter die Nulllinie
+            const y0 = y(unten), y1 = y(unten + roh);
+            s += balkenPfad(x(i) - innen / 2, y0 + (unten < 0 ? gap : 0), innen, Math.max(0, y1 - y0 - (unten < 0 ? gap : 0)), -4, se.farbe);
+            unten += roh; return;
+          }
+          const v = roh;
+          const y1 = y(basis + v), y0 = y(basis), oben = k === sicht.length - 1 || sicht.slice(k + 1).every(z => !(z.werte[i] > 0));
           const h = Math.max(0, y0 - y1 - (basis > 0 ? gap : 0));
           s += balkenPfad(x(i) - innen / 2, y1, innen, h, oben ? 4 : 0, se.farbe);
           basis += v;
         });
       } else {
-        const bw = (innen - gap * (serien.length - 1)) / serien.length;
-        serien.forEach((se, k) => {
+        const bw = (innen - gap * (sicht.length - 1)) / sicht.length;
+        sicht.forEach((se, k) => {
           const v = se.werte[i]; if (v == null) return;
           const x0 = x(i) - innen / 2 + k * (bw + gap);
           s += v >= 0 ? balkenPfad(x0, y(v), bw, y(0) - y(v), 4, se.farbe) : balkenPfad(x0, y(0), bw, y(v) - y(0), -4, se.farbe);
@@ -249,7 +269,7 @@ function diagramm(el, { labels, serien, art = "linie", hoehe = 230, xfmt = x => 
     const i = art === "linie" ? Math.round((px - L) / (n === 1 ? 1 : iw / (n - 1))) : Math.floor((px - L) / band);
     if (i < 0 || i >= n || px < L - 10) { weg(); return; }
     kreuz.setAttribute("x1", x(i)); kreuz.setAttribute("x2", x(i)); kreuz.setAttribute("visibility", art === "linie" ? "visible" : "hidden");
-    tip.innerHTML = `<b>${xfmt(labels[i])}</b>` + serien.map(se => `<div class="r"><i class="sw" style="background:${se.farbe}"></i><span>${se.name}</span><span>${eur(se.werte[i])}</span></div>`).join("");
+    tip.innerHTML = `<b>${xfmt(labels[i])}</b>` + serien.filter(se => se.werte[i] != null || !se.nurPunkte).map(se => `<div class="r"><i class="sw" style="background:${se.nurTip ? "transparent" : se.farbe}"></i><span>${se.name}</span><span>${se.fmt ? se.fmt(se.werte[i]) : eur(se.werte[i])}</span></div>`).join("");
     tip.style.display = "block";
     const tx = x(i) * r.width / W, links = tx > r.width / 2;
     tip.style.left = (links ? tx - tip.offsetWidth - 12 : tx + 12) + "px"; tip.style.top = "4px";
@@ -284,7 +304,11 @@ let zeitraum = 60, herkunft = "12", depotWahl = -1, posWahl = null;
 let vAnsicht = "uebersicht", kontoWahl = 0;
 function zurueck() { return `<button class="link" id="v-zurueck" style="padding:0 0 4px;justify-self:start">‹ Zurück zur Vermögensübersicht</button>`; }
 function vZeigen(a) { vAnsicht = a; zeichneVermoegen(DATEN); requestAnimationFrame(diagrammeZeichnen); window.scrollTo({ top: 0 }); }
-function tabWechseln(id) { document.querySelector(`.tabs button[data-tab="${id}"]`).click(); }
+function tabWechseln(id) {
+  const b = document.querySelector(`.tabs button[data-tab="${id}"]`);
+  const ber = b.closest("#tabs-geschaeft") ? "geschaeft" : "privat";
+  if (ber !== bereich) { letzterTab[ber] = id; bereichWechseln(ber); } else b.click();
+}
 
 function zeichneVermoegen(D) {
   if (vAnsicht === "depots") return zeichneDepots(D);
@@ -454,6 +478,334 @@ function zeichneDepots(D) {
   }
 }
 
+// ------------------------------------------------------------------ Geschäft
+let gJahr = null, gPostenJahr = null, hkJahr = null;
+const tausch = (a, b) => a == null || b == null ? "" : delta(a, b);
+
+function geschaeftKopf(D) {
+  const G = D.geschaeft, gj = G.jahre.filter(j => j.quelle === "Abschluss"), KJ = G.konto_jahre || [];
+  const jahre = [...gj.slice(-3).map(j => ({ jahr: j.jahr, art: "abschluss" })), ...KJ.map(k => ({ jahr: k.jahr, art: "konto" }))];
+  if (!jahre.length) return leer("Noch keine Jahresabschlüsse.");
+  if (gJahr == null || !jahre.some(j => j.jahr === gJahr)) gJahr = gj.length ? gj[gj.length - 1].jahr : jahre[jahre.length - 1].jahr;
+  const auswahl = `<div class="seg wrap jahre" id="seg-gjahr">${jahre.map(j => `<button data-j="${j.jahr}" aria-pressed="${j.jahr === gJahr}">${j.jahr}${j.art === "konto" ? " · Konto" : ""}</button>`).join("")}</div>`;
+  const a = gj.find(j => j.jahr === gJahr);
+  let h = "";
+  if (a) {
+    const v = gj.find(j => j.jahr === gJahr - 1);
+    h = `<div class="grid kpis">
+      ${kpi("Umsatz " + a.jahr, eur(a.umsatz), v ? tausch(a.umsatz, v.umsatz) + " zu " + v.jahr : "")}
+      ${kpi("Kosten " + a.jahr, eur(a.kosten), v ? tausch(a.kosten, v.kosten) + " zu " + v.jahr : "")}
+      ${kpi("Gewinn " + a.jahr, eur(a.gewinn), v ? tausch(a.gewinn, v.gewinn) + " zu " + v.jahr : "")}
+      ${kpi("Gewinnmarge " + a.jahr, pct(a.marge), "Gewinn ÷ Umsatz")}</div>
+      <div class="hinweis">Alle vier Werte für dasselbe Jahr laut Jahresabschluss ${a.jahr}${a.sonstige_ertraege ? ` · Kosten und Gewinn beziehen sonstige betriebliche Erträge von ${eur(a.sonstige_ertraege)} mit ein` : ""}.</div>`;
+  } else {
+    const k = KJ.find(x => x.jahr === gJahr), ab = G.abweichung_konto_umsatz || [];
+    const spanne = ab.length ? `In den Jahren mit Abschluss lagen diese Eingänge zwischen ${ab.map(x => (x > 0 ? "+" : "") + x + " %").sort((p, q) => parseInt(p) - parseInt(q)).filter((_, i, l) => i === 0 || i === l.length - 1).join(" und ")} neben dem Umsatz laut Abschluss.` : "";
+    h = `<div class="grid kpis">
+      ${kpi("Zahlungseingänge " + k.jahr + (k.vollstaendig ? "" : " (Ist)"), eur(k.ist), k.vollstaendig ? "Geschäftskonto, ganzes Jahr" : "Geschäftskonto bis " + datumDe(k.bis))}
+      ${k.hochrechnung ? kpi("Hochrechnung " + k.jahr, eur(k.hochrechnung), "linear aufs Jahr gerechnet – Schätzung") : kpi("Umsatz " + k.jahr, "offen", "noch kein Jahresabschluss")}
+      ${kpi("Kosten " + k.jahr, "offen", "aus dem Konto nicht belastbar")}
+      ${kpi("Gewinn " + k.jahr, "offen", "kommt mit dem Jahresabschluss")}</div>
+      <div class="warn">Zahlungseingänge von Auftraggebern (ohne eigene Überweisungen und Umbuchungen) sind <b>kein Umsatz</b>. ${spanne}
+      Kosten und Gewinn lassen sich aus dem Konto noch nicht seriös ableiten, weil Privatentnahmen und betriebliche Ausgaben noch nicht sauber getrennt sind.${k.vollstaendig ? "" : ` Datenstand ${datumDe(k.bis)}.`}</div>`;
+  }
+  return auswahl + h;
+}
+
+function zeichneGeschaeft(D) {
+  const S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3"), S4 = css("--s4");
+  const G = D.geschaeft, gj = G.jahre;
+  $("#g-kopf").innerHTML = geschaeftKopf(D);
+  document.querySelectorAll("#seg-gjahr button").forEach(b => b.onclick = () => { gJahr = +b.dataset.j; $("#g-kopf").innerHTML = geschaeftKopf(D); zeichneGeschaeft(D); requestAnimationFrame(diagrammeZeichnen); });
+
+  // --- Cashflow
+  let h = "";
+  if (G.cashflow.length) h += card("Geschäftskonto: Ein- und Auszahlungen", legende([{ name: "Eingänge", farbe: S1 }, { name: "Ausgänge", farbe: S2 }])
+    + platz("c-gcf", { labels: G.cashflow.map(c => c.m), xfmt: monat, art: "balken", serien: [{ name: "Eingänge", farbe: S1, werte: G.cashflow.map(c => c.ein) }, { name: "Ausgänge", farbe: S2, werte: G.cashflow.map(c => c.aus) }] }),
+    "letzte 24 Monate, ohne Umbuchungen · Eingänge sind nicht gleich Umsatz, Ausgänge enthalten auch Privatentnahmen");
+  else h += card("", leer("Kontoumsätze des Geschäftskontos (CSV) in den Unterordner „Geschäft“ im Eingang legen."));
+  const PE = gj.filter(j => j.privatentnahmen != null);
+  h += `<div class="grid two">` + card("Geschäftliche Ausgaben nach Kategorie", (G.kosten_kategorien || []).length ? hbalken(G.kosten_kategorien.map(k => ({ label: k.k, wert: k.b, farbe: S2 }))) : leer("–"),
+      "letzte 12 Monate · vorläufig: die Zuordnung der Buchungen wird noch verbessert")
+    + card("Privatentnahmen laut Abschluss", PE.length ? tabelle([["Jahr"], ["Entnahmen", 1], ["Einlagen", 1]], PE.slice().reverse().map(j => [j.jahr, eur(j.privatentnahmen), eur(j.privateinlagen)])) : leer("–"),
+      "Konto 1800 / 1890 im Kontennachweis") + `</div>`;
+  $("#g-cashflow").innerHTML = h;
+
+  // --- Steuern & Abschlüsse
+  h = "";
+  if (!gj.length) h = card("", leer("Noch keine Jahresabschlüsse. EÜR, GuV oder Jahresabschlüsse in den Eingang legen."));
+  else {
+    const lab = gj.map(j => String(j.jahr));
+    h += card("Umsatz, Kosten und Gewinn pro Jahr", legende([{ name: "Kosten", farbe: S2 }, { name: "Gewinn", farbe: S1 }, ...(gj.some(j => j.gewinn < 0) ? [{ name: "Verlust", farbe: css("--t3") }] : [])])
+      + platz("c-gj", { labels: lab, art: "stapel", hoehe: 260, serien: [
+          { name: "Kosten", farbe: S2, werte: gj.map(j => j.gewinn < 0 ? (j.umsatz || 0) + (j.sonstige_ertraege || 0) : j.kosten) },
+          { name: "Gewinn", farbe: S1, werte: gj.map(j => Math.max(0, j.gewinn || 0)) },
+          { name: "Verlust", farbe: css("--t3"), werte: gj.map(j => j.gewinn < 0 ? j.gewinn : null) },
+          { name: "Umsatz", nurTip: true, werte: gj.map(j => j.umsatz) },
+          { name: "sonstige Erträge", nurTip: true, werte: gj.map(j => j.sonstige_ertraege || null) },
+          { name: "Marge", nurTip: true, werte: gj.map(j => j.marge), fmt: v => pct(v) }] }),
+      "Balkenhöhe = Umsatz (plus sonstige betriebliche Erträge), aufgeteilt in Kosten und den verbleibenden Gewinn · Verlust unter der Nulllinie");
+    h += card("Jahresübersicht", tabelle([["Jahr"], ["Umsatz", 1], ["Kosten", 1], ["Gewinn", 1], ["Steuerl. Gewinn", 1], ["Marge", 1], ["Quelle"]],
+      gj.slice().reverse().map(j => [j.jahr, eur(j.umsatz), eur(j.kosten), eur(j.gewinn), eur(j.steuerlicher_gewinn), pct(j.marge),
+        (j.quelle === "BWA" ? `BWA (${j.monate} Mon.)` : j.quelle) + (j.abgleich ? ' <span class="ok" title="Umsatz + sonstige Erträge − Kosten = Gewinn">✓</span>' : "")])),
+      "Steuerlicher Gewinn: nach außerbilanziellen Korrekturen (z.B. nicht abzugsfähige Ausgaben, Gewerbesteuer)");
+    // Abschluss-Details
+    const mitP = gj.filter(j => (j.posten || []).length);
+    if (mitP.length) {
+      if (gPostenJahr == null || !mitP.some(j => j.jahr === gPostenJahr)) gPostenJahr = mitP[mitP.length - 1].jahr;
+      const a = mitP.find(j => j.jahr === gPostenJahr);
+      h += card(`Abschluss im Detail <span class="seg" id="seg-posten">${mitP.map(j => `<button data-j="${j.jahr}" aria-pressed="${j.jahr === gPostenJahr}">${j.jahr}</button>`).join("")}</span>`,
+        hbalken(a.posten.map(p => ({ label: p.gruppe, wert: p.betrag, farbe: S2, zusatz: pct(p.betrag / a.kosten * 100, 0) })))
+        + `<div class="summe">Summe Kosten <b>${eur(a.kosten)}</b>${a.abgleich ? ' <span class="ok">✓ passt zum Abschluss</span>' : ' <span class="rot">weicht vom Abschluss ab</span>'}</div>`
+        + `<details class="konten"><summary>Einzelkonten anzeigen</summary>${tabelle([["Konto"], ["Bezeichnung"], ["Posten"], ["Betrag", 1]],
+            a.posten.flatMap(p => p.konten.map(k => [k.konto, esc(k.name), esc(p.gruppe), eur(k.betrag)])))}</details>`,
+        `Kontennachweis aus „${esc(a.posten_datei || "")}“ · nur belegte Posten, nichts geschätzt`);
+    }
+    // betriebliche Steuern
+    const BS = gj.filter(j => j.gewerbesteuer != null || j.ust_zahllast != null || j.einkuenfte_gewerbe != null);
+    if (BS.length) {
+      h += card("Betriebliche Steuern je Jahr", legende([{ name: "Gewerbesteuer", farbe: S2 }, { name: "Umsatzsteuer-Zahllast", farbe: S4 }, { name: "ESt-Anteil Gewerbe (rechnerisch)", farbe: S3 }])
+        + platz("c-gst", { labels: BS.map(j => String(j.jahr)), art: "balken", serien: [{ name: "Gewerbesteuer", farbe: S2, werte: BS.map(j => j.gewerbesteuer) },
+            { name: "Umsatzsteuer-Zahllast", farbe: S4, werte: BS.map(j => j.ust_zahllast) }, { name: "ESt-Anteil Gewerbe (rechnerisch)", farbe: S3, werte: BS.map(j => j.est_anteil_gewerbe ?? null) }] })
+        + tabelle([["Jahr"], ["Gewinn lt. Abschluss", 1], ["Einkünfte Gewerbebetrieb", 1], ["Gewerbesteuer", 1], ["USt-Zahllast", 1], ["ESt-Anteil Gewerbe*", 1]],
+          BS.slice().reverse().map(j => [j.jahr, eur(j.gewinn), eur(j.einkuenfte_gewerbe), eur(j.gewerbesteuer), eur(j.ust_zahllast), eur(j.est_anteil_gewerbe)])),
+        "Einkünfte laut ESt-Bescheid · * abgeleitet: festgesetzte ESt × Anteil der Gewerbeeinkünfte an der Summe der Einkünfte – nicht aus dem Bescheid, wird nicht zu den privaten Steuern addiert");
+    }
+  }
+  $("#g-abschluss").innerHTML = h;
+  document.querySelectorAll("#seg-posten button").forEach(b => b.onclick = () => { gPostenJahr = +b.dataset.j; zeichneGeschaeft(D); requestAnimationFrame(diagrammeZeichnen); });
+
+  // --- Mitarbeiter
+  const PA = gj.filter(j => (j.posten || []).some(p => p.gruppe === "Personal"));
+  $("#g-mitarbeiter").innerHTML = card("Umsatz und Ergebnis nach Mitarbeiter", leer("Noch keine sauber zuordenbaren Daten. Sobald Abrechnungen mit Vermittler- bzw. Mitarbeiternummer vorliegen, erscheinen hier Umsatz und – wenn eindeutig zuordenbar – Ergebnis je Mitarbeiter."))
+    + (PA.length ? card("Personalaufwand laut Abschluss", tabelle([["Jahr"], ["Personalaufwand", 1], ["Anteil an den Kosten", 1]],
+        PA.slice().reverse().map(j => { const p = j.posten.find(x => x.gruppe === "Personal"); return [j.jahr, eur(p.betrag), pct(p.betrag / j.kosten * 100, 0)]; }))) : "");
+
+  // --- Einnahmequellen
+  const HJ = G.herkunft_jahre || {}, hjJahre = Object.keys(HJ).filter(k => HJ[k].length);
+  const quellen = { "12": G.herkunft_12m || [], ...HJ };
+  if (hkJahr == null || !quellen[hkJahr]) hkJahr = "12";
+  const l = quellen[hkJahr] || [];
+  $("#g-einnahmen").innerHTML = card(`Wichtige Auftraggeber <span class="seg" id="seg-hk">${["12", ...hjJahre].map(k => `<button data-k="${k}" aria-pressed="${k === hkJahr}">${k === "12" ? "12 Mon." : k}</button>`).join("")}</span>`,
+      l.length ? hbalken(l.map(x => ({ label: x.name, wert: x.betrag, zusatz: pct(x.anteil, 0) }))) : leer("Keine Einnahmen im Zeitraum."),
+      "Zahlungseingänge Geschäftskonto, ohne eigene Überweisungen und Umbuchungen – nicht gleich Umsatz")
+    + card("Auswertung nach Geschäftsfeld", leer("Folgt, sobald die Eingänge sauber Geschäftsfeldern (z.B. Versicherung, Investment, Finanzierung) zugeordnet sind."));
+  document.querySelectorAll("#seg-hk button").forEach(b => b.onclick = () => { hkJahr = b.dataset.k; zeichneGeschaeft(D); });
+}
+
+// ------------------------------------------------------------------ Immobilien
+let immoDetail = null;
+const monJahr = d => d ? d.slice(5, 7) + "/" + d.slice(0, 4) : "–";
+function wertHerkunft(o) {
+  const b = o.wertbasis || {};
+  if (!b.quelle) return "–";
+  const ws = o.wertsteigerung == null ? "Wertansatz offen" : o.wertsteigerung === 0 ? "ohne Fortschreibung" : `fortgeschrieben mit ${pct(o.wertsteigerung * 100, 0)} p.a. (Schätzung)`;
+  return `${esc(b.quelle)} vom ${datumDe(b.datum)}${b.geschaetzt ? (b.rueckwaerts ? " · zurückgerechnet (Schätzung)" : " · " + ws) : " · belegt"}`;
+}
+function kaufText(o) { return o.kaufdatum ? datumDe(o.kaufdatum) : o.kaufdatum_geschaetzt ? "ca. " + monJahr(o.kaufdatum_geschaetzt) + " (geschätzt)" : "–"; }
+
+function zeichneImmobilien(D) {
+  const S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3");
+  const I = D.immobilien, O = I.objekte;
+  if (!O.length) { $("#immobilien").innerHTML = card("", leer("Noch keine Immobilie erkannt. Kaufverträge, Darlehensverträge und Mietverträge in den Eingang legen.")); return; }
+  if (immoDetail != null) { const o = O.find(x => x.id === immoDetail); if (o) return zeichneObjekt(D, o); immoDetail = null; }
+  const sum = k => O.reduce((a, o) => a + (o[k] || 0), 0);
+  const sumV = k => O.filter(o => o.nutzung !== "selbst").reduce((a, o) => a + (o[k] || 0), 0);
+  let h = `<div class="grid kpis">
+    ${kpi("Gesamtwert", eur(sum("wert")), O.length + " Objekte" + (O.some(o => o.anteil < 1) ? " · dein Anteil" : ""))}
+    ${kpi("Restschuld", eur(sum("restschuld")), sum("wert") ? "Beleihung " + pct(sum("restschuld") / sum("wert") * 100, 0) : "")}
+    ${kpi("Eigenkapital", eur(sum("ek")))}
+    ${kpi("Kaltmiete / Monat", eur(sum("miete")), eur(sum("miete") * 12) + " im Jahr")}
+    ${kpi("Cashflow / Monat", eur(sumV("cashflow")), "vermietete Objekte, nach Rate und Kosten, vor Steuern")}</div>`;
+  h += I.hinweise.map(x => `<div class="warn">${esc(x)}</div>`).join("");
+  // Laptop: gestapelte Balken · Smartphone: Zeilen mit horizontalem Balken
+  h += `<div class="nur-gross">` + card("Wert je Objekt: Restschuld und Eigenkapital", legende([{ name: "Restschuld", farbe: S2 }, { name: "Eigenkapital", farbe: S1 }])
+    + platz("c-obj", { labels: O.map(o => o.name), art: "stapel", hoehe: 250, xfmt: n => n.length > 14 ? n.slice(0, 13) + "…" : n,
+      serien: [{ name: "Restschuld", farbe: S2, werte: O.map(o => o.restschuld) }, { name: "Eigenkapital", farbe: S1, werte: O.map(o => Math.max(0, o.ek)) }] }),
+    "nach Gesamtwert sortiert · Werte mit deinem Anteil") + `</div>`;
+  const mx = Math.max(...O.map(o => o.wert || 0), 1);
+  h += `<div class="nur-klein">` + card("Objekte nach Wert", legende([{ name: "Restschuld", farbe: S2 }, { name: "Eigenkapital", farbe: S1 }])
+    + O.map(o => `<button class="ozeile" data-id="${o.id}"><div class="oname">${esc(o.name)}<small>${esc((o.adresse || "").split(",").slice(1).join(",").trim())}</small></div>
+      <div class="obalken"><div class="bahn" style="width:${(o.wert || 0) / mx * 100}%"><span style="width:${o.wert ? Math.min(100, o.restschuld / o.wert * 100) : 0}%;background:${S2}"></span><span style="flex:1;background:${o.warnung ? "var(--rot)" : S1}"></span></div>
+      <div class="ozahl"><b>${eur(o.wert)}</b> · RS ${kurz(o.restschuld || 0)} € · EK ${kurz(o.ek || 0)} €</div></div></button>`).join(""),
+    "nach Gesamtwert sortiert · antippen für Details") + `</div>`;
+  const opt = `<select id="obj-wahl"><option value="">Alle Objekte</option>${O.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>`;
+  h += card(`Wert und Restschuld im Zeitverlauf <span style="float:right">${opt}</span>`, `<div id="tv-legende"></div><div class="chart" id="c-tv"></div><div id="tv-tab"></div>`, `<span id="tv-sub"></span>`);
+  h += `<div class="grid objekte nur-gross">${O.map(o => `<button class="card obj kachel-obj" data-id="${o.id}"><h2>${esc(o.name)} <span class="pfeil">›</span></h2><div class="adr">${esc(o.adresse)}${o.anteil && o.anteil < 1 ? ` · Anteil ${pct(o.anteil * 100, 0)}${o.mit ? " (mit " + esc(o.mit) + ")" : ""}` : ""}${o.nutzung === "selbst" ? " · selbst genutzt" : ""}${o.status && /bau/i.test(o.status) ? " · im Bau" : ""}</div>
+    ${o.hinweis ? `<div class="${o.warnung ? "rot" : "fehlt"}">${esc(o.hinweis)}</div>` : ""}<dl>
+    <dt>Wert</dt><dd>${eur(o.wert)}</dd><dt>Restschuld</dt><dd>${eur(o.restschuld)}</dd><dt>Eigenkapital</dt><dd>${eur(o.ek)}</dd>
+    <dt>Kaltmiete / Monat</dt><dd>${eur(o.miete)}</dd><dt>Rate / Monat</dt><dd>${eur(o.rate)}</dd><dt>Cashflow / Monat</dt><dd>${eur(o.cashflow)}</dd>
+    <dt>Zinsbindung bis</dt><dd>${monJahr(o.zinsbindung)}</dd><dt>Kauf</dt><dd>${kaufText(o)}</dd></dl>
+    <div class="wq">Wert: ${wertHerkunft(o)}</div></button>`).join("")}</div>`;
+  $("#immobilien").innerHTML = h;
+  const tv = () => {
+    const id = $("#obj-wahl").value, o = id ? O.find(x => x.id == id) : null;
+    let opts, leg, sub = "", tab = "";
+    if (!o) {
+      const v = I.verlauf;
+      opts = { labels: v.map(p => String(p.j)), serien: [{ name: "Wert", farbe: S1, werte: v.map(p => p.wert) }, { name: "Restschuld", farbe: S2, werte: v.map(p => p.rs) }] };
+      leg = [{ name: "Wert", farbe: S1 }, { name: "Restschuld", farbe: S2 }];
+      sub = "alle Objekte mit deinem Anteil · Wert je Objekt ab letztem belegten Stichtag fortgeschrieben (Schätzung) · Restschuld nach Tilgungsplan";
+    } else {
+      const v = o.verlauf_objekt, jetzt = new Date().getFullYear();
+      opts = { labels: v.map(p => String(p.j)), serien: [
+        { name: "Wert (Ist/fortgeschrieben)", farbe: S1, werte: v.map(p => p.j <= jetzt ? p.wert : null) },
+        { name: "Wert (Prognose)", farbe: S1, strich: "5 4", werte: v.map(p => p.j >= jetzt ? p.wert : null) },
+        { name: "belegter Wert", farbe: S3, nurPunkte: true, werte: v.map(p => p.belegt ? p.wert : null) },
+        { name: "Restschuld", farbe: S2, werte: v.map(p => p.rs) }] };
+      leg = [{ name: "Wert", farbe: S1 }, { name: "belegter Wert (Kaufpreis, Bewertung, Übersicht)", farbe: S3 }, { name: "Restschuld", farbe: S2 }];
+      sub = `voller Objektwert · ${o.wertsteigerung == null ? "Wertansatz offen – keine Fortschreibung" : "Fortschreibung " + pct(o.wertsteigerung * 100, 0) + " p.a. als Planungsannahme"} · gestrichelt = Zukunft`;
+      tab = `<details class="konten"><summary>Jahreswerte anzeigen</summary>${tabelle([["Jahr"], ["Wert", 1], ["Basis"], ["Restschuld", 1]],
+        v.slice().reverse().map(p => [p.j, eur(p.wert), p.belegt ? `<span class="ok">belegt: ${esc(p.belegt)}</span>` : p.zukunft ? "Prognose" : "Schätzung", eur(p.rs) + (p.rs_ist ? " (Ist)" : "")]))}</details>`;
+    }
+    plaetze["c-tv"] = opts; $("#tv-legende").innerHTML = legende(leg); $("#tv-sub").textContent = sub; $("#tv-tab").innerHTML = tab;
+    const el = $("#c-tv"); if (el.offsetParent !== null) diagramm(el, plaetze["c-tv"]);
+  };
+  $("#obj-wahl").onchange = tv; tv();
+  document.querySelectorAll(".kachel-obj, .ozeile").forEach(b => b.onclick = () => { immoDetail = +b.dataset.id; zeichneImmobilien(D); requestAnimationFrame(diagrammeZeichnen); window.scrollTo({ top: 0 }); });
+}
+
+function zahlFmt(k, v) {
+  if (v == null || v === "") return "–";
+  if (typeof v === "number") {
+    if (/\(%\)|anteil|sollzins|tilgung$/i.test(k) && Math.abs(v) <= 1.5) return pct(v * 100, /zins|tilgung/i.test(k) ? 2 : 1);
+    if (/baujahr|nr$|^nr|blatt|^mea$/i.test(k)) return String(v).replace(".", ",");
+    if (/fl\.|fläche|grundstück/i.test(k)) return v.toLocaleString("de-DE", { maximumFractionDigits: 2 }) + " m²";
+    return eur(v);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return datumDe(v);
+  return esc(v);
+}
+
+function zeichneObjekt(D, o) {
+  const S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3");
+  const a = o.anteil || 1;
+  let h = `<button class="link" id="i-zurueck" style="padding:0 0 4px;justify-self:start">‹ Zurück zur Immobilienübersicht</button>`;
+  h += `<div class="card"><h2 style="font-size:19px;margin-bottom:2px">${esc(o.name)}</h2><div class="adr">${esc(o.adresse)} · ${esc(o.status || o.nutzung)}${a < 1 ? ` · Anteil ${pct(a * 100, 0)}${o.mit ? " (mit " + esc(o.mit) + ")" : ""}` : ""}</div>
+    ${o.hinweis ? `<div class="${o.warnung ? "rot" : "fehlt"}" style="margin-top:6px">${esc(o.hinweis)}</div>` : ""}</div>`;
+  if ((o.fotos || []).length) h += `<div class="fotos">${o.fotos.map(f => `<img src="${f}" alt="Foto ${esc(o.name)}" loading="lazy">`).join("")}</div>`;
+  const anteilHinweis = a < 1 ? " (dein Anteil)" : "";
+  h += `<div class="grid kpis">
+    ${kpi("Wert" + anteilHinweis, eur(o.wert), wertHerkunft(o))}
+    ${kpi("Restschuld" + anteilHinweis, eur(o.restschuld), o.beleihung != null ? "Beleihung " + pct(o.beleihung, 0) : "")}
+    ${kpi("Eigenkapital" + anteilHinweis, eur(o.ek))}
+    ${kpi("Kaltmiete / Monat", eur(o.miete), o.nutzung === "selbst" ? "selbst genutzt" : "")}
+    ${kpi("Darlehensrate / Monat", eur(o.rate))}
+    ${kpi("Kosten / Jahr", eur(o.kosten), (o.kosten_liste || []).length ? "aus den Unterlagen" : "noch keine Unterlagen")}
+    ${kpi("Cashflow / Monat", eur(o.cashflow), "nach Rate und Kosten, vor Steuern")}
+    ${kpi("Bruttomietrendite", pct(o.brutto), "Jahreskaltmiete ÷ Kaufpreis")}
+    ${kpi("Kaufpreis", eur(o.kaufpreis), "Kauf " + kaufText(o))}
+    ${kpi("Zinsbindung bis", monJahr(o.zinsbindung), o.rs_zinsbindung ? "Restschuld dann ca. " + eur(o.rs_zinsbindung) : "")}</div>`;
+  // Wert-Historie
+  h += card("Woher der Wert kommt", tabelle([["Stichtag"], ["Quelle"], ["Wert (voll)", 1], ["Datei"]],
+      (o.belege || []).slice().reverse().map(b => [datumDe(b.datum), esc(b.quelle), eur(b.wert), esc(b.datei || "")]))
+    + `<div class="hinweis">Aktueller Wert: ${wertHerkunft(o)}. ${o.wertsteigerung == null ? "Für dieses Objekt ist noch keine Wertentwicklung angesetzt." : `Die ${pct(o.wertsteigerung * 100, 0)} p.a. sind eine Planungsannahme, keine Marktwertentwicklung.`} Neue Bewertungen werden als weiterer belegter Wert ergänzt, frühere bleiben erhalten.</div>`);
+  // Verlauf
+  const v = o.verlauf_objekt || [], jetzt = new Date().getFullYear();
+  if (v.length) h += card("Wert und Restschuld im Zeitverlauf", legende([{ name: "Wert", farbe: S1 }, { name: "belegter Wert", farbe: S3 }, { name: "Restschuld", farbe: S2 }])
+    + platz("c-od", { labels: v.map(p => String(p.j)), serien: [
+        { name: "Wert (Ist/fortgeschrieben)", farbe: S1, werte: v.map(p => p.j <= jetzt ? p.wert : null) },
+        { name: "Wert (Prognose)", farbe: S1, strich: "5 4", werte: v.map(p => p.j >= jetzt ? p.wert : null) },
+        { name: "belegter Wert", farbe: S3, nurPunkte: true, werte: v.map(p => p.belegt ? p.wert : null) },
+        { name: "Restschuld", farbe: S2, werte: v.map(p => p.rs) }] }), "voller Objektwert, ohne Anteil · gestrichelt = Zukunft");
+  // Darlehen
+  (o.darlehen || []).forEach((d, i) => {
+    const ex = d.extra || {};
+    const zusatz = Object.entries(ex).filter(([k]) => !/darlehensnummer|^bank$|sollzins|^tilgung$|bindung|darlehenssumme|darlehensstand|annuität/i.test(k));
+    h += card(`Darlehen ${esc(d.nummer)} · ${esc(d.bank || "")}`, `<div class="grid zwei-spalten"><dl class="dl">
+        <dt>Ursprüngliche Summe</dt><dd>${eur(d.betrag)}</dd><dt>Sollzins</dt><dd>${d.zins != null ? pct(d.zins, 2) : "–"}</dd>
+        <dt>Anfängliche Tilgung</dt><dd>${d.tilgung != null ? pct(d.tilgung, 2) : "–"}</dd><dt>Rate / Monat</dt><dd>${eur(d.rate)}</dd>
+        <dt>Beginn</dt><dd>${d.beginn ? datumDe(d.beginn) : d.beginn_geschaetzt ? "ca. " + monJahr(d.beginn_geschaetzt) + " (geschätzt)" : "–"}</dd>
+        <dt>Restschuld heute</dt><dd>${eur(d.restschuld)}</dd><dt>Letzter Ist-Stand</dt><dd>${d.restschuld_ist != null ? eur(d.restschuld_ist) + " am " + datumDe(d.restschuld_datum) : "–"}</dd>
+        <dt>Zinsbindung bis</dt><dd>${d.zinsbindung ? datumDe(d.zinsbindung) : "–"}</dd><dt>Restschuld Zinsbindungsende</dt><dd>${eur(d.rs_zinsbindung)}</dd>
+        ${zusatz.map(([k, w]) => `<dt>${esc(k)}</dt><dd>${zahlFmt(k, w)}</dd>`).join("")}</dl>
+        <div>${(d.verlauf || []).length > 1 ? platz("c-dl" + i, { labels: d.verlauf.map(x => String(x.j)), serien: [{ name: "Restschuld", farbe: S2, werte: d.verlauf.map(x => x.rs) }], hoehe: 180 }) : ""}</div></div>`,
+      "Tilgungsverlauf: ab letztem Ist-Stand mit Rate und Zins fortgerechnet");
+  });
+  // Mieten, Kosten
+  if ((o.mieten || []).length) h += card("Miete", tabelle([["ab"], ["Kaltmiete", 1], ["Nebenkosten", 1], ["Mieter"], ["Quelle"]],
+    o.mieten.slice().reverse().map(m => [datumDe(m.ab), eur(m.kalt), eur(m.nk), esc(m.mieter || ""), esc(m.quelle || "")])));
+  h += card("Jährliche Kosten aus den Unterlagen", (o.kosten_liste || []).length ? tabelle([["Jahr"], ["Art"], ["Betrag (voll)", 1], ["Quelle"]],
+    o.kosten_liste.slice().sort((p, q) => q.jahr - p.jahr).map(k => [k.jahr, esc(k.art), eur(k.betrag), esc(k.quelle || "")])) : leer("Noch keine Hausgeld-, Nebenkosten-, Grundsteuer- oder Versicherungsunterlagen."));
+  // Stammdaten
+  const ex = o.extra || {};
+  const stamm = [["Adresse", esc(o.adresse)], ["Kaufdatum", kaufText(o)], ["Wohnfläche", o.flaeche ? o.flaeche.toLocaleString("de-DE") + " m²" : "–"],
+    ...Object.entries(ex).filter(([k]) => !/^nr$|^anteil$|^mit$|wohnfl|verkehrswert$|^kaufpreis$/i.test(k)).map(([k, w]) => [esc(k), zahlFmt(k, w)])];
+  h += card("Objektangaben", `<dl class="dl zwei">${stamm.map(([k, w]) => `<dt>${k}</dt><dd>${w}</dd>`).join("")}</dl>`, "aus Immobilienübersicht (Excel) und Verträgen");
+  // Steuerliche Wirkung
+  const VU = o.vuv || [];
+  h += card("Steuerliche Wirkung (Vermietung und Verpachtung)", (o.vuv_aktenzeichen || []).length
+      ? tabelle([["Jahr"], ["Einkünfte / Verlust", 1]], VU.slice().reverse().map(x => [x.jahr, x.offen && x.betrag == null ? '<span class="rot">offen</span>' : eur(x.betrag)]))
+      : leer("Aktenzeichen noch nicht zugeordnet – offen. Die Bescheide enthalten die Einkünfte je EW-Aktenzeichen (siehe Privat › Steuern); nach der Zuordnung erscheinen sie hier je Jahr."));
+  $("#immobilien").innerHTML = h;
+  $("#i-zurueck").onclick = () => { immoDetail = null; zeichneImmobilien(D); requestAnimationFrame(diagrammeZeichnen); window.scrollTo({ top: 0 }); };
+}
+
+// ------------------------------------------------------------------ Steuern (privat)
+let stJahr = null;
+const ESTFELDER = [
+  ["Einkünfte aus Gewerbebetrieb", "e_gewerbe"], ["Einkünfte aus selbständiger Arbeit", "e_selbst"], ["Einkünfte aus nichtselbständiger Arbeit", "e_nsa"],
+  ["Einkünfte aus Kapitalvermögen", "e_kap"], ["Einkünfte aus Vermietung und Verpachtung", "e_vuv"], ["Sonstige Einkünfte", "e_sonst"]];
+
+function zeichneSteuern(D) {
+  const S1 = css("--s1"), S3 = css("--s3"), S4 = css("--s4");
+  const ST = D.steuern.jahre, STV = ST.filter(s => s.veranlagt);
+  if (!STV.length) { $("#steuern").innerHTML = card("", leer("Noch keine Steuerbescheide. Einkommensteuerbescheide in den Eingang legen.")); return; }
+  const erstes = STV[0].jahr, letztes = STV[STV.length - 1].jahr;
+  const luecken = []; for (let j = erstes; j <= letztes; j++) if (!STV.some(s => s.jahr === j)) luecken.push(j);
+  const voll = STV.filter(s => s.zve != null && s.einkommensteuer != null);
+  const summe = k => voll.reduce((a, s) => a + (s[k] || 0), 0);
+  const steuern = s => (s.einkommensteuer || 0) + (s.soli || 0) + (s.kirchensteuer || 0);
+  const sZve = summe("zve"), sEst = summe("einkommensteuer"), sRest = voll.reduce((a, s) => a + s.zve - steuern(s), 0);
+  const zr = `${voll[0].jahr}–${voll[voll.length - 1].jahr}, ${voll.length} Jahre${luecken.length ? " (ohne " + luecken.join(", ") + ")" : ""}`;
+  let h = `<div class="grid kpis drei">
+    ${kpi("Zu versteuerndes Einkommen, kumuliert", eur(sZve), "Ø " + eur(sZve / voll.length) + " pro Jahr")}
+    ${kpi("Festgesetzte Einkommensteuer, kumuliert", eur(sEst), "Ø " + eur(sEst / voll.length) + " pro Jahr")}
+    ${kpi("Nach festgesetzter Steuer verbleibend", eur(sRest), "Ø " + eur(sRest / voll.length) + " pro Jahr")}</div>
+    <div class="hinweis">Zeitraum ${zr}. Verbleibend = zu versteuerndes Einkommen − Einkommensteuer − Solidaritätszuschlag − Kirchensteuer laut Bescheid.
+    Das ist <b>nicht</b> das frei verfügbare Nettoeinkommen: Sozialabgaben, Versicherungsbeiträge und andere Abzüge sind nicht berücksichtigt.</div>`;
+  if (luecken.length) h += `<div class="warn">Kein Bescheid für ${luecken.join(", ")} – Datenlücke, wird nicht geschätzt.</div>`;
+  h += card("Einkommensteuer pro Jahr", legende([{ name: "Einkommensteuer", farbe: S1 }, { name: "Solidaritätszuschlag", farbe: S3 }, { name: "Kirchensteuer", farbe: S4 }])
+    + platz("c-st", { labels: STV.map(s => String(s.jahr)), art: "stapel", serien: [{ name: "Einkommensteuer", farbe: S1, werte: STV.map(s => s.einkommensteuer) }, { name: "Solidaritätszuschlag", farbe: S3, werte: STV.map(s => s.soli) }, { name: "Kirchensteuer", farbe: S4, werte: STV.map(s => s.kirchensteuer) }] }));
+  // Jahr im Detail
+  if (stJahr == null || !STV.some(s => s.jahr === stJahr)) stJahr = letztes;
+  const s = STV.find(x => x.jahr === stJahr);
+  const fehlt = '<span class="fehlwert">fehlt</span>';
+  const w = (v, abg) => v == null ? fehlt : eur(v) + (abg ? ' <span class="abg" title="rechnerisch: Summe der Einkünfte minus die übrigen Einkunftsarten (lesbare Ziffern passen)">≙</span>' : "");
+  const ab = s.abgeleitet || [];
+  const kap = s.e_kap != null && s.e_kap !== 0 ? w(s.e_kap) : s.kap_32d != null ? eur(s.kap_32d) + ' <span class="klein">(§ 32d EStG, Abgeltungsteuer)</span>' : w(s.e_kap);
+  const zeilen = [
+    ["Summe der Einkünfte – Ehemann", w(s.se_mann)], ["Summe der Einkünfte – Ehefrau", s.se_frau == null && s.se_mann != null && s.se_zus === s.se_mann ? "–" : w(s.se_frau)],
+    ["Summe der Einkünfte – zusammen", w(s.se_zus)],
+    ...ESTFELDER.map(([l, k]) => { const alt = { e_gewerbe: s.gewerbe, e_vuv: s.vuv }[k]; const v = s[k] ?? alt;
+      return [l, k === "e_kap" ? kap : (v == null && ["e_selbst", "e_sonst"].includes(k) ? "–" : w(v, ab.includes(k.slice(2))))]; }),
+    ["Gesamtbetrag der Einkünfte", w(s.gde)], ["Zu versteuerndes Einkommen", w(s.zve)],
+    ["Festgesetzte Einkommensteuer", w(s.einkommensteuer)], ["Solidaritätszuschlag", w(s.soli)], ["Kirchensteuer", w(s.kirchensteuer)],
+    ["Steuerbelastung gesamt (ESt + Soli + KiSt)", s.einkommensteuer == null ? fehlt : "<b>" + eur(steuern(s)) + "</b>"],
+    ["Durchschnittssteuersatz auf das zvE", s.satz != null ? pct(s.satz) : "–"], ["Erstattung (+) / Nachzahlung (−)", s.abrechnung != null ? eur(s.abrechnung) : "–"]];
+  h += card(`Bescheid ${s.jahr} <span class="seg" id="seg-st">${STV.slice().reverse().map(x => `<button data-j="${x.jahr}" aria-pressed="${x.jahr === stJahr}">${x.jahr}</button>`).join("")}</span>`,
+    `<table class="detail">${zeilen.map(([l, v]) => `<tr><td>${l}</td><td class="n">${v}</td></tr>`).join("")}</table>`,
+    `Quelle: ${s.quelle === "Bescheid" ? "Einkommensteuerbescheid" : s.quelle === "Erklärung" ? "Steuerberechnung/Erklärung (kein Bescheid hochgeladen)" : s.quelle} · Werte wie im Bescheid, nichts geschätzt · „fehlt“ = im Dokument nicht (lesbar) enthalten`);
+  // alle Jahre
+  h += card("Alle Jahre", tabelle([["Jahr"], ["Quelle"], ["Summe Eink.", 1], ["Gewerbe", 1], ["Nichtselbst.", 1], ["Kapital", 1], ["V+V", 1], ["GdE", 1], ["zvE", 1], ["ESt", 1], ["Soli", 1], ["KiSt", 1], ["Gesamt", 1]],
+    STV.slice().reverse().map(x => [x.jahr, x.quelle, eur(x.se_zus), eur(x.e_gewerbe ?? x.gewerbe), eur(x.e_nsa), eur(x.e_kap || x.kap_32d), eur(x.e_vuv ?? x.vuv), eur(x.gde), eur(x.zve),
+      eur(x.einkommensteuer), eur(x.soli), eur(x.kirchensteuer), eur(x.gesamt)])), "– = im Bescheid nicht enthalten oder nicht lesbar");
+  // V+V je Aktenzeichen
+  const AZ = [...new Set(STV.flatMap(x => Object.keys(x.vuv_az || {})))];
+  if (AZ.length) {
+    const J = STV.filter(x => Object.keys(x.vuv_az || {}).length);
+    const zuo = D.steuern.aktenzeichen || {};
+    h += card("Vermietung und Verpachtung je Aktenzeichen", tabelle([["EW-Aktenzeichen"], ["Objekt"], ...J.map(x => [String(x.jahr), 1])],
+      AZ.map(az => [esc(az), zuo[az] ? esc(zuo[az]) : '<span class="rot">offen</span>', ...J.map(x => az in (x.vuv_az || {}) ? (x.vuv_az[az] == null ? '<span class="fehlwert">unleserlich</span>' : eur(x.vuv_az[az])) : "")])),
+      "aus den Bescheiden (Summe Ehemann + Ehefrau) · die Zuordnung zu den Immobilien folgt, sobald du mir die Aktenzeichen nennst");
+  }
+  const KAP = ST.filter(x => x.kap_ertrag != null);
+  if (KAP.length) h += card("Kapitalerträge aus Fondsdepots", tabelle([["Jahr"], ["Steuerpflichtiger Ertrag", 1], ["Abgeltungsteuer inkl. Soli/KiSt", 1]],
+    KAP.slice().reverse().map(x => [x.jahr, eur(x.kap_ertrag), eur(x.abgeltung)])), "bereits von der Bank einbehalten (u.a. Vorabpauschale)");
+  $("#steuern").innerHTML = h;
+  document.querySelectorAll("#seg-st button").forEach(b => b.onclick = () => { stJahr = +b.dataset.j; zeichneSteuern(D); requestAnimationFrame(diagrammeZeichnen); });
+}
+
 function zeichnen() {
   for (const k in plaetze) delete plaetze[k];
   const D = DATEN, S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3"), S4 = css("--s4");
@@ -462,106 +814,10 @@ function zeichnen() {
   // ---------- Vermögen (Übersicht oder Unterseite Konten / Depots)
   zeichneVermoegen(D);
 
-  // ---------- Geschäft
-  const G = D.geschaeft, gj = G.jahre, letzt = gj[gj.length - 1], vorj = gj[gj.length - 2];
-  let h = "";
-  if (!gj.length && !G.bwa.length && !G.cashflow.length) h = card("", leer("Noch keine Geschäftszahlen. EÜR, GuV, Jahresabschlüsse oder BWAs in den Eingang legen.<br>Kontoumsätze des Geschäftskontos in einen Unterordner „Geschäft“ im Eingang legen."));
-  else {
-    const teil = letzt && letzt.monate < 12, vgl = vorj && !teil;
-    if (letzt) h += `<div class="grid kpis">
-      ${kpi("Umsatz " + letzt.jahr, eur(letzt.umsatz), teil ? `bis jetzt, aus ${letzt.monate} BWA-Monaten` : vgl ? delta(letzt.umsatz, vorj.umsatz) + " zu " + vorj.jahr : "")}
-      ${kpi("Gewinn " + letzt.jahr, eur(letzt.gewinn), teil && vorj ? `Hochrechnung ${eur(letzt.gewinn / letzt.monate * 12)} (Vorjahr ${eur(vorj.gewinn)})` : vgl ? delta(letzt.gewinn, vorj.gewinn) + " zu " + vorj.jahr : "")}
-      ${kpi("Kosten " + letzt.jahr, eur(letzt.kosten))}
-      ${kpi("Gewinnmarge", pct(letzt.marge), letzt.quelle === "BWA" ? "vorläufig (BWA)" : "lt. Abschluss")}</div>`;
-    if (gj.length) h += card("Umsatz, Kosten und Gewinn pro Jahr", legende([{ name: "Umsatz", farbe: S1 }, { name: "Kosten", farbe: S2 }, { name: "Gewinn", farbe: S3 }])
-      + platz("c-gj", { labels: gj.map(j => j.monate < 12 ? `${j.jahr} (${j.monate} M.)` : String(j.jahr)), art: "balken", serien: [{ name: "Umsatz", farbe: S1, werte: gj.map(j => j.umsatz) }, { name: "Kosten", farbe: S2, werte: gj.map(j => j.kosten) }, { name: "Gewinn", farbe: S3, werte: gj.map(j => j.gewinn) }] }));
-    const zeilen2 = [];
-    if (G.bwa.length) zeilen2.push(card("Monatsergebnis (BWA)", legende([{ name: "Umsatz", farbe: S1 }, { name: "Ergebnis", farbe: S3 }])
-      + platz("c-bwa", { labels: G.bwa.map(b => b.m), xfmt: monat, art: "balken", serien: [{ name: "Umsatz", farbe: S1, werte: G.bwa.map(b => b.umsatz) }, { name: "Ergebnis", farbe: S3, werte: G.bwa.map(b => b.gewinn) }] })));
-    if (G.cashflow.length) zeilen2.push(card("Geschäftskonto: Ein- und Auszahlungen", legende([{ name: "Eingänge", farbe: S1 }, { name: "Ausgänge", farbe: S2 }])
-      + platz("c-gcf", { labels: G.cashflow.map(c => c.m), xfmt: monat, art: "balken", serien: [{ name: "Eingänge", farbe: S1, werte: G.cashflow.map(c => c.ein) }, { name: "Ausgänge", farbe: S2, werte: G.cashflow.map(c => c.aus) }] })));
-    if (zeilen2.length) h += `<div class="grid ${zeilen2.length > 1 ? "two" : ""}">${zeilen2.join("")}</div>`;
-    const HK = { "12": G.herkunft_12m || [], [String(new Date().getFullYear())]: G.herkunft_jahr || [], [String(new Date().getFullYear() - 1)]: G.herkunft_vorjahr || [] };
-    if ((G.herkunft_12m || []).length) {
-      h += `<div class="grid two">` + card(`Einnahmen nach Auftraggeber <span class="seg" id="seg-hk">${Object.keys(HK).filter(k => HK[k].length).map(k => `<button data-k="${k}" aria-pressed="${k === herkunft}">${k === "12" ? "12 Mon." : k}</button>`).join("")}</span>`,
-          `<div id="hk-liste"></div>`, "Geschäftskonto, ohne Umbuchungen")
-        + card("Geschäftliche Ausgaben nach Kategorie", (G.kosten_kategorien || []).length ? hbalken(G.kosten_kategorien.map(k => ({ label: k.k, wert: k.b, farbe: S2 }))) : leer("–"), "letzte 12 Monate") + `</div>`;
-    }
-    if (gj.length) h += card("Jahresübersicht", tabelle([["Jahr"], ["Umsatz", 1], ["Kosten", 1], ["Gewinn", 1], ["Steuerl. Gewinn", 1], ["Marge", 1], ["Quelle"]],
-      gj.slice().reverse().map(j => [j.jahr, eur(j.umsatz), eur(j.kosten), eur(j.gewinn), eur(j.steuerlicher_gewinn), pct(j.marge), j.quelle === "BWA" ? `BWA (${j.monate} Mon.)` : j.quelle])));
-  }
-  $("#geschaeft").innerHTML = h;
-  const hkZeigen = () => {
-    const el = $("#hk-liste"); if (!el) return;
-    const HKd = { "12": G.herkunft_12m || [], [String(new Date().getFullYear())]: G.herkunft_jahr || [], [String(new Date().getFullYear() - 1)]: G.herkunft_vorjahr || [] };
-    const l = HKd[herkunft] || [];
-    el.innerHTML = l.length ? hbalken(l.map(x => ({ label: x.name, wert: x.betrag, zusatz: pct(x.anteil, 0) }))) : leer("Keine Einnahmen im Zeitraum.");
-    document.querySelectorAll("#seg-hk button").forEach(b => b.setAttribute("aria-pressed", b.dataset.k === herkunft));
-  };
-  $("#seg-hk")?.addEventListener("click", e => { if (e.target.dataset.k) { herkunft = e.target.dataset.k; hkZeigen(); } });
-  hkZeigen();
-
-  // ---------- Immobilien
-  const I = D.immobilien, O = I.objekte;
-  if (!O.length) $("#immobilien").innerHTML = card("", leer("Noch keine Immobilie erkannt. Kaufverträge, Darlehensverträge und Mietverträge in den Eingang legen."));
-  else {
-    const sum = k => O.reduce((a, o) => a + (o[k] || 0), 0);
-    const sumV = k => O.filter(o => o.nutzung !== "selbst").reduce((a, o) => a + (o[k] || 0), 0);
-    h = `<div class="grid kpis">
-      ${kpi("Gesamtwert", eur(sum("wert")), O.length + (O.length === 1 ? " Objekt" : " Objekte") + (O.some(o => o.anteil < 1) ? " · dein Anteil" : ""))}
-      ${kpi("Restschuld", eur(sum("restschuld")), sum("wert") ? "Beleihung " + pct(sum("restschuld") / sum("wert") * 100, 0) : "")}
-      ${kpi("Eigenkapital", eur(sum("ek")))}
-      ${kpi("Kaltmiete / Monat", eur(sum("miete")), eur(sum("miete") * 12) + " im Jahr")}
-      ${kpi("Cashflow / Monat", eur(sumV("cashflow")), "vermietete Objekte, nach Rate und Kosten, vor Steuern")}</div>`;
-    h += I.hinweise.map(x => `<div class="warn">${esc(x)}</div>`).join("");
-    h += card("Wert je Objekt: Restschuld und Eigenkapital", legende([{ name: "Restschuld", farbe: S2 }, { name: "Eigenkapital", farbe: S1 }])
-      + platz("c-obj", { labels: O.map(o => o.name), art: "stapel", hoehe: 250, xfmt: n => n.length > 14 ? n.slice(0, 13) + "…" : n,
-        serien: [{ name: "Restschuld", farbe: S2, werte: O.map(o => o.restschuld) }, { name: "Eigenkapital", farbe: S1, werte: O.map(o => Math.max(0, o.ek)) }] }));
-    const opt = `<select id="obj-wahl"><option value="">Alle Objekte</option>${O.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>`;
-    h += card(`Wert und Restschuld im Zeitverlauf <span style="float:right">${opt}</span>`, `<div id="tv-legende">${legende([{ name: "Wert", farbe: S1 }, { name: "Restschuld", farbe: S2 }])}</div><div class="chart" id="c-tv"></div>`,
-      `Wert ab letzter Bewertung mit ${pct(I.wertsteigerung * 100, 0)} p.a. fortgeschrieben · Restschuld nach Tilgungsplan`);
-    h += `<div class="grid objekte">${O.map(o => `<div class="card obj"><h2>${esc(o.name)}</h2><div class="adr">${esc(o.adresse)}${o.anteil && o.anteil < 1 ? ` · Anteil ${pct(o.anteil * 100, 0)}${o.mit ? " (mit " + esc(o.mit) + ")" : ""}` : ""}${o.nutzung === "selbst" ? " · selbst genutzt" : ""}${o.status && /bau/i.test(o.status) ? " · im Bau" : ""}</div><dl>
-      <dt>Wert</dt><dd>${eur(o.wert)}</dd><dt>Restschuld</dt><dd>${eur(o.restschuld)}</dd><dt>Eigenkapital</dt><dd>${eur(o.ek)}</dd>
-      <dt>Kaltmiete / Monat</dt><dd>${eur(o.miete)}</dd><dt>Rate / Monat</dt><dd>${eur(o.rate)}</dd><dt>Kosten / Jahr</dt><dd>${eur(o.kosten)}</dd>
-      <dt>Cashflow / Monat</dt><dd>${eur(o.cashflow)}</dd><dt>Brutto- / Nettorendite</dt><dd>${pct(o.brutto)} / ${pct(o.netto)}</dd>
-      <dt>Zinsbindung bis</dt><dd>${o.zinsbindung ? o.zinsbindung.slice(5, 7) + "/" + o.zinsbindung.slice(0, 4) : "–"}</dd>
-      <dt>Kaufpreis</dt><dd>${eur(o.kaufpreis)}</dd>
-      <dt>Kauf</dt><dd>${o.kaufdatum ? datumDe(o.kaufdatum) : o.kaufdatum_geschaetzt ? "ca. " + o.kaufdatum_geschaetzt.slice(5, 7) + "/" + o.kaufdatum_geschaetzt.slice(0, 4) : "–"}</dd>
-      <dt>Wertbasis</dt><dd>${esc(o.wertquelle || "–")}</dd></dl>
-      ${o.fehlt ? `<div class="fehlt">Fehlt noch: ${esc(o.fehlt)}</div>` : ""}</div>`).join("")}</div>`;
-    $("#immobilien").innerHTML = h;
-    const tv = () => {
-      const id = $("#obj-wahl").value, v = id ? O.find(o => o.id == id).verlauf : I.verlauf;
-      plaetze["c-tv"] = { labels: v.map(p => String(p.j)), serien: [{ name: "Wert", farbe: S1, werte: v.map(p => p.wert) }, { name: "Restschuld", farbe: S2, werte: v.map(p => p.rs) }] };
-      const el = $("#c-tv"); if (el.offsetParent !== null) diagramm(el, plaetze["c-tv"]);
-    };
-    $("#obj-wahl").onchange = tv; tv();
-  }
-
-  // ---------- Steuern
-  const ST = D.steuern.jahre, STV = ST.filter(s => s.veranlagt), STB = ST.filter(s => s.betrieb);
-  if (!ST.length) $("#steuern").innerHTML = card("", leer("Noch keine Steuerdaten. Bescheide, Erklärungen und Besteuerungsgrundlagen in den Eingang legen."));
-  else {
-    h = "";
-    const lb = STB[STB.length - 1], vb = STB[STB.length - 2];
-    if (lb) h += `<div class="grid kpis">
-      ${kpi("Einkünfte Gewerbebetrieb " + lb.jahr, eur(lb.gewerbe), vb && vb.gewerbe != null && lb.gewerbe != null ? delta(lb.gewerbe, vb.gewerbe) + " zu " + vb.jahr : lb.quelle)}
-      ${kpi("Gewerbesteuer " + lb.jahr, eur(lb.gewerbesteuer), lb.gewst_messbetrag != null ? "Messbetrag " + eur(lb.gewst_messbetrag) + " (auf ESt anrechenbar)" : "")}
-      ${kpi("Umsatzsteuer-Zahllast " + lb.jahr, eur(lb.ust_zahllast), lb.ust_steuerfrei != null ? "steuerfreie Umsätze " + eur(lb.ust_steuerfrei) : "")}
-      ${STV.length ? kpi("Einkommensteuer " + STV[STV.length - 1].jahr, eur(STV[STV.length - 1].gesamt), "Durchschnittssatz " + pct(STV[STV.length - 1].satz)) : kpi("Einkommensteuer", "–", "kommt mit dem ersten ESt-Bescheid")}</div>`;
-    if (STB.length) h += `<div class="grid two">` + card("Einkünfte aus Gewerbebetrieb",
-        platz("c-gew", { labels: STB.map(s => String(s.jahr)), art: "balken", serien: [{ name: "Einkünfte", farbe: S1, werte: STB.map(s => s.gewerbe) }] }), "steuerlich, laut Feststellung / Anlage G")
-      + card("Gewerbe- und Umsatzsteuer", legende([{ name: "Gewerbesteuer", farbe: S2 }, { name: "Umsatzsteuer-Zahllast", farbe: S4 }])
-        + platz("c-gst", { labels: STB.map(s => String(s.jahr)), art: "balken", serien: [{ name: "Gewerbesteuer", farbe: S2, werte: STB.map(s => s.gewerbesteuer) }, { name: "Umsatzsteuer-Zahllast", farbe: S4, werte: STB.map(s => s.ust_zahllast) }] })) + `</div>`;
-    if (STV.length) h += card("Einkommensteuer pro Jahr", legende([{ name: "Einkommensteuer", farbe: S1 }, { name: "Solidaritätszuschlag", farbe: S3 }, { name: "Kirchensteuer", farbe: S4 }])
-        + platz("c-st", { labels: STV.map(s => String(s.jahr)), art: "stapel", serien: [{ name: "Einkommensteuer", farbe: S1, werte: STV.map(s => s.einkommensteuer) }, { name: "Solidaritätszuschlag", farbe: S3, werte: STV.map(s => s.soli) }, { name: "Kirchensteuer", farbe: S4, werte: STV.map(s => s.kirchensteuer) }] }));
-    const KAP = ST.filter(s => s.kap_ertrag != null);
-    if (KAP.length) h += card("Kapitalerträge aus Fondsdepots", tabelle([["Jahr"], ["Steuerpflichtiger Ertrag", 1], ["Abgeltungsteuer inkl. Soli/KiSt", 1]],
-      KAP.slice().reverse().map(s => [s.jahr, eur(s.kap_ertrag), eur(s.abgeltung)])), "bereits von der Bank einbehalten (u.a. Vorabpauschale)");
-    h += card("Übersicht", tabelle([["Jahr"], ["Quelle"], ["Einkünfte Gewerbe", 1], ["GewSt-Messbetrag", 1], ["Gewerbesteuer", 1], ["USt-Zahllast", 1], ["zvE", 1], ["ESt gesamt", 1], ["Erst./Nachz.", 1]],
-      ST.filter(s => s.betrieb || s.veranlagt).slice().reverse().map(s => [s.jahr, s.quelle, eur(s.gewerbe), eur(s.gewst_messbetrag), eur(s.gewerbesteuer), eur(s.ust_zahllast), eur(s.zve), eur(s.gesamt), eur(s.abrechnung)])));
-    $("#steuern").innerHTML = h;
-  }
+  // ---------- Geschäft, Immobilien, Steuern
+  zeichneGeschaeft(D);
+  zeichneImmobilien(D);
+  zeichneSteuern(D);
 
   // ---------- Fuß
   const P = D.dokumente.pruefen;
