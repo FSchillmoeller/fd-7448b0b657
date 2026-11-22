@@ -735,8 +735,11 @@ function zeichneObjekt(D, o) {
   h += card("Objektangaben", `<dl class="dl zwei">${stamm.map(([k, w]) => `<dt>${k}</dt><dd>${w}</dd>`).join("")}</dl>`, "aus Immobilienübersicht (Excel) und Verträgen");
   // Steuerliche Wirkung
   const VU = o.vuv || [];
+  const gem = (o.vuv_gemeinsam || [])[0];
   h += card("Steuerliche Wirkung (Vermietung und Verpachtung)", (o.vuv_aktenzeichen || []).length
-      ? tabelle([["Jahr"], ["Einkünfte / Verlust", 1]], VU.slice().reverse().map(x => [x.jahr, x.offen && x.betrag == null ? '<span class="rot">offen</span>' : eur(x.betrag)]))
+      ? tabelle([["Jahr"], [gem ? "Einkünfte / Verlust (gemeinsam)" : "Einkünfte / Verlust", 1]], VU.slice().reverse().map(x => [x.jahr, (x.offen && x.betrag == null ? '<span class="rot">offen</span>' : eur(x.betrag)) + (x.offen && x.betrag != null ? ' <span class="klein">(teilweise unleserlich)</span>' : "")]))
+        + (gem ? `<div class="hinweis">Läuft über die Grundstücksgemeinschaft zusammen mit ${esc(gem.objekte.filter(z => !(o.adresse || "").startsWith(z)).join(", "))} – der Betrag gilt für beide Objekte zusammen (dein Anteil laut Bescheid). Die Aufteilung je Objekt folgt mit der Feststellungserklärung.</div>` : "")
+        + `<div class="hinweis">Aktenzeichen: ${(o.vuv_aktenzeichen || []).map(esc).join(", ")} · Werte laut Einkommensteuerbescheid</div>`
       : leer("Aktenzeichen noch nicht zugeordnet – offen. Die Bescheide enthalten die Einkünfte je EW-Aktenzeichen (siehe Privat › Steuern); nach der Zuordnung erscheinen sie hier je Jahr."));
   $("#immobilien").innerHTML = h;
   $("#i-zurueck").onclick = () => { immoDetail = null; zeichneImmobilien(D); requestAnimationFrame(diagrammeZeichnen); window.scrollTo({ top: 0 }); };
