@@ -777,7 +777,7 @@ function zeichneSteuern(D) {
   const zeilen = [
     ["Summe der Einkünfte – Ehemann", w(s.se_mann)], ["Summe der Einkünfte – Ehefrau", s.se_frau == null && s.se_mann != null && s.se_zus === s.se_mann ? "–" : w(s.se_frau)],
     ["Summe der Einkünfte – zusammen", w(s.se_zus)],
-    ...ESTFELDER.map(([l, k]) => { const alt = { e_gewerbe: s.gewerbe, e_vuv: s.vuv }[k]; const v = s[k] ?? alt;
+    ...ESTFELDER.map(([l, k]) => { const alt = s.se_zus == null ? { e_gewerbe: s.gewerbe, e_vuv: s.vuv }[k] : null; const v = s[k] ?? alt;
       return [l, k === "e_kap" ? kap : (v == null && ["e_selbst", "e_sonst"].includes(k) ? "–" : w(v, ab.includes(k.slice(2))))]; }),
     ["Gesamtbetrag der Einkünfte", w(s.gde)], ["Zu versteuerndes Einkommen", w(s.zve)],
     ["Festgesetzte Einkommensteuer", w(s.einkommensteuer)], ["Solidaritätszuschlag", w(s.soli)], ["Kirchensteuer", w(s.kirchensteuer)],
@@ -788,7 +788,7 @@ function zeichneSteuern(D) {
     `Quelle: ${s.quelle === "Bescheid" ? "Einkommensteuerbescheid" : s.quelle === "Erklärung" ? "Steuerberechnung/Erklärung (kein Bescheid hochgeladen)" : s.quelle} · Werte wie im Bescheid, nichts geschätzt · „fehlt“ = im Dokument nicht (lesbar) enthalten`);
   // alle Jahre
   h += card("Alle Jahre", tabelle([["Jahr"], ["Quelle"], ["Summe Eink.", 1], ["Gewerbe", 1], ["Nichtselbst.", 1], ["Kapital", 1], ["V+V", 1], ["GdE", 1], ["zvE", 1], ["ESt", 1], ["Soli", 1], ["KiSt", 1], ["Gesamt", 1]],
-    STV.slice().reverse().map(x => [x.jahr, x.quelle, eur(x.se_zus), eur(x.e_gewerbe ?? x.gewerbe), eur(x.e_nsa), eur(x.e_kap || x.kap_32d), eur(x.e_vuv ?? x.vuv), eur(x.gde), eur(x.zve),
+    STV.slice().reverse().map(x => [x.jahr, x.quelle, eur(x.se_zus), eur(x.e_gewerbe ?? (x.se_zus == null ? x.gewerbe : null)), eur(x.e_nsa), eur(x.e_kap || x.kap_32d), eur(x.e_vuv ?? (x.se_zus == null ? x.vuv : null)), eur(x.gde), eur(x.zve),
       eur(x.einkommensteuer), eur(x.soli), eur(x.kirchensteuer), eur(x.gesamt)])), "– = im Bescheid nicht enthalten oder nicht lesbar");
   // V+V je Aktenzeichen
   const AZ = [...new Set(STV.flatMap(x => Object.keys(x.vuv_az || {})))];
