@@ -609,7 +609,11 @@ function zeichneImmobilien(D) {
   const S1 = css("--s1"), S2 = css("--s2"), S3 = css("--s3");
   const I = D.immobilien, O = I.objekte;
   if (!O.length) { $("#immobilien").innerHTML = card("", leer("Noch keine Immobilie erkannt. Kaufverträge, Darlehensverträge und Mietverträge in den Eingang legen.")); return; }
-  if (immoDetail != null) { const o = O.find(x => x.id === immoDetail); if (o) return zeichneObjekt(D, o); immoDetail = null; }
+  if (immoDetail != null) {
+    const o = O.find(x => x.id === immoDetail); if (o) return zeichneObjekt(D, o);
+    const v = (I.verkauft || []).find(x => x.id === immoDetail); if (v) return zeichneVerkauft(D, v);
+    immoDetail = null;
+  }
   const sum = k => O.reduce((a, o) => a + (o[k] || 0), 0);
   const sumV = k => O.filter(o => o.nutzung !== "selbst").reduce((a, o) => a + (o[k] || 0), 0);
   let h = `<div class="grid kpis">
@@ -637,7 +641,8 @@ function zeichneImmobilien(D) {
     <dt>Wert</dt><dd>${eur(o.wert)}</dd><dt>Restschuld</dt><dd>${eur(o.restschuld)}</dd><dt>Eigenkapital</dt><dd>${eur(o.ek)}</dd>
     <dt>Kaltmiete / Monat</dt><dd>${eur(o.miete)}</dd><dt>Rate / Monat</dt><dd>${eur(o.rate)}</dd><dt>Cashflow / Monat</dt><dd>${eur(o.cashflow)}</dd>
     <dt>Zinsbindung bis</dt><dd>${monJahr(o.zinsbindung)}</dd><dt>Kauf</dt><dd>${kaufText(o)}</dd></dl>
-    <div class="wq">Wert: ${wertHerkunft(o)}</div></button>`).join("")}</div>`;
+    <div class="wq">Wert: ${wertHerkunft(o)}</div></button>`).join("")}${(I.verkauft || []).map(v => verkaufKachel(v)).join("")}</div>`;
+  if ((I.verkauft || []).length) h += `<div class="nur-klein">${card("Verkaufte Objekte", I.verkauft.map(v => verkaufKachel(v, true)).join(""))}</div>`;
   $("#immobilien").innerHTML = h;
   const tv = () => {
     const id = $("#obj-wahl").value, o = id ? O.find(x => x.id == id) : null;
@@ -663,7 +668,33 @@ function zeichneImmobilien(D) {
     const el = $("#c-tv"); if (el.offsetParent !== null) diagramm(el, plaetze["c-tv"]);
   };
   $("#obj-wahl").onchange = tv; tv();
+  document.querySelectorAll(".kachel-verkauft").forEach(b => b.onclick = () => { immoDetail = +b.dataset.id; zeichneImmobilien(D); window.scrollTo({ top: 0 }); });
   document.querySelectorAll(".kachel-obj, .ozeile").forEach(b => b.onclick = () => { immoDetail = +b.dataset.id; zeichneImmobilien(D); requestAnimationFrame(diagrammeZeichnen); window.scrollTo({ top: 0 }); });
+}
+
+function verkaufKachel(v, klein) {
+  return `<button class="card obj kachel-verkauft${klein ? " klein" : ""}" data-id="${v.id}"><h2>${esc(v.name)} <span class="pfeil">›</span></h2>
+    <div class="adr">${esc(v.adresse)} · verkauft</div><dl>
+    <dt>Kauf</dt><dd>${v.kaufdatum ? datumDe(v.kaufdatum) : v.kaufjahr || "–"}</dd><dt>Kaufpreis</dt><dd>${eur(v.kaufpreis)}</dd><dt>Darlehen</dt><dd>${eur(v.darlehen)}</dd><dt>Verkaufspreis</dt><dd>${eur(v.verkaufspreis)}</dd>
+    <dt>Gewinn (Verkauf − Kauf)</dt><dd class="gruen">${v.gewinn != null ? (v.gewinn > 0 ? "+" : "") + eur(v.gewinn) : "–"}</dd></dl>
+    <div class="wq">mit Gewinn verkauft · zählt nicht mehr zum Vermögen</div></button>`;
+}
+function zeichneVerkauft(D, v) {
+  let h = `<button class="link" id="i-zurueck" style="padding:0 0 4px;justify-self:start">‹ Zurück zur Immobilienübersicht</button>`;
+  h += `<div class="card verkauft-kopf"><h2 style="font-size:19px;margin-bottom:2px">${esc(v.name)}</h2><div class="adr">${esc(v.adresse)} · verkauft${v.anteil < 1 ? " · Anteil " + pct(v.anteil * 100, 0) : ""}</div></div>`;
+  h += `<div class="grid kpis">
+    ${kpi("Kaufpreis", eur(v.kaufpreis), v.kaufdatum ? "Kauf " + datumDe(v.kaufdatum) : v.kaufjahr ? "Kauf " + v.kaufjahr : "")}
+    ${kpi("Darlehen", eur(v.darlehen), v.eigenkapital_eingesetzt != null ? (v.eigenkapital_eingesetzt < 0 ? "über den Kaufpreis hinaus finanziert" : "Eigenkapital " + eur(v.eigenkapital_eingesetzt)) : "")}
+    ${kpi("Verkaufspreis", eur(v.verkaufspreis))}
+    ${kpi("Gewinn (Verkauf − Kauf)", `<span class="gruen">${v.gewinn != null ? (v.gewinn > 0 ? "+" : "") + eur(v.gewinn) : "–"}</span>`, "vor Nebenkosten, Tilgung und Steuern")}</div>`;
+  h += card("Steuerliche Wirkung (Vermietung und Verpachtung)", (v.vuv || []).length
+    ? tabelle([["Jahr"], ["Einkünfte / Verlust", 1]], v.vuv.slice().reverse().map(x => [x.jahr, x.betrag == null ? '<span class="rot">offen</span>' : eur(x.betrag)]))
+      + `<div class="hinweis">Aktenzeichen: ${v.vuv_aktenzeichen.map(esc).join(", ")} · Werte laut Einkommensteuerbescheid</div>`
+    : leer("Keine Einkünfte zugeordnet."));
+  const ex = Object.entries(v.extra || {}).filter(([k]) => !/^nr$|^anteil$|^mit$|verkehrswert|^kaufpreis$|wertsteigerung|gewinn/i.test(k));
+  if (ex.length) h += card("Objektangaben", `<dl class="dl zwei">${ex.map(([k, w]) => `<dt>${esc(k)}</dt><dd>${zahlFmt(k, w)}</dd>`).join("")}</dl>`, "aus der Immobilienübersicht (Excel)");
+  $("#immobilien").innerHTML = h;
+  $("#i-zurueck").onclick = () => { immoDetail = null; zeichneImmobilien(D); requestAnimationFrame(diagrammeZeichnen); window.scrollTo({ top: 0 }); };
 }
 
 function zahlFmt(k, v) {
