@@ -318,7 +318,7 @@ function zeichneVermoegen(D) {
   const S1 = css("--s1"), S2 = css("--s2");
   const V = D.vermoegen, t = V.teile, DP = D.depots || [];
   const vk = t["Vorsorge kurzfristig"] || 0, vlg = t["Vorsorge langfristig"] || 0;
-  const immoNetto = (t["Immobilien (Wert)"] || 0) + (t.Darlehen || 0);
+  const immoNetto = (t["Immobilien (Wert)"] || 0) + (t.Darlehen || 0) + (t.Mietkonten || 0);
   const mitEinz = DP.filter(d => d.eingezahlt != null && d.wert != null);
   const einz = mitEinz.reduce((a, d) => a + d.eingezahlt, 0), gew = mitEinz.reduce((a, d) => a + (d.wert - d.eingezahlt), 0);
   const nKonten = V.konten.filter(k => k.art === "giro" || k.art === "tagesgeld").length;
@@ -331,7 +331,7 @@ function zeichneVermoegen(D) {
     <button class="card kpi kachel" data-ziel="konten"><div class="l">Konten ›</div><div class="v">${eur(t.Konten)}</div>
       <div class="d">${nKonten} Konten${V.sparquote != null ? " · Sparquote " + pct(V.sparquote) : ""}</div></button>
     <button class="card kpi kachel" data-ziel="immobilien"><div class="l">Immobilien netto ›</div><div class="v">${eur(immoNetto)}</div>
-      <div class="d">Wert ${kurz(t["Immobilien (Wert)"] || 0)} € − Darlehen ${kurz(-(t.Darlehen || 0))} €</div></button>
+      <div class="d">Wert ${kurz(t["Immobilien (Wert)"] || 0)} € − Darlehen ${kurz(-(t.Darlehen || 0))} €${t.Mietkonten ? ` + Mietkonten ${kurz(t.Mietkonten)} €` : ""}</div></button>
     <button class="card kpi kachel" data-ziel="vorsorge"><div class="l">Vorsorge ›</div><div class="v">${eur(vk + vlg)}</div>
       <div class="d">kurzfristig verfügbar ${eur(vk)}<br>langfristig ${eur(vlg)}</div></button></div>`;
   h += `<div class="grid two">` + card(`Nettovermögen im Verlauf <span class="seg" id="seg">${[[12, "1J"], [36, "3J"], [60, "5J"], [120, "10J"]].map(([m, l]) => `<button data-m="${m}" aria-pressed="${m === zeitraum}">${l}</button>`).join("")}</span>`,
@@ -375,7 +375,7 @@ function zeichneKonten(D) {
         + (k.nummer || k.institut ? `<div class="klein">${[k.institut, k.nummer && !k.name.replace(/\s/g, "").includes(k.nummer.replace(/\s/g, "")) ? k.nummer : null].filter(Boolean).map(esc).join(" · ")}</div>` : ""),
         k.zins != null ? pct(k.zins) + " p.a." : "", eur(k.saldo), datumDe(k.datum)])) + `</div>`;
   }
-  const det = K.filter(k => k.art !== "depot" && (k.bewegungen.length || k.verlauf.length > 1));
+  const det = K.filter(k => !["depot", "darlehen", "mietkonto"].includes(k.art) && (k.bewegungen.length || k.verlauf.length > 1));
   if (det.length) {
     if (kontoWahl >= det.length) kontoWahl = 0;
     const k = det[kontoWahl];
@@ -650,6 +650,10 @@ function zeichneImmobilien(D) {
       <div class="obalken"><div class="bahn" style="width:${(o.wert || 0) / mx * 100}%"><span style="width:${o.wert ? Math.min(100, o.restschuld / o.wert * 100) : 0}%;background:${S2}"></span><span style="flex:1;background:${o.warnung ? "var(--rot)" : S1}"></span></div>
       <div class="ozahl"><b>${eur(o.wert)}</b> · RS ${kurz(o.restschuld || 0)} € · EK ${kurz(o.ek || 0)} €</div></div></button>`).join(""),
     "nach Gesamtwert sortiert · antippen für Details") + `</div>`;
+  const MK = I.mietkonten || [];
+  if (MK.length) h += card(`Mietkonten <span style="float:right">${eur(MK.reduce((a, k) => a + (k.saldo || 0), 0))}</span>`,
+    tabelle([["Konto"], ["Objekt"], ["Stand", 1], ["vom", 1]], MK.map(k => [esc(k.name), esc(k.objekt || "–"), eur(k.saldo), datumDe(k.datum)])),
+    "zählen zu „Immobilien netto“ · Mietkautionen stehen unter Vermögen › Konten › Treuhand und zählen nicht mit");
   const opt = `<select id="obj-wahl"><option value="">Alle Objekte</option>${O.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>`;
   h += card(`Wert und Restschuld im Zeitverlauf <span style="float:right">${opt}</span>`, `<div id="tv-legende"></div><div class="chart" id="c-tv"></div><div id="tv-tab"></div>`, `<span id="tv-sub"></span>`);
   h += `<div class="grid objekte nur-gross">${O.map(o => `<button class="card obj kachel-obj" data-id="${o.id}"><h2>${esc(o.name)} <span class="pfeil">›</span></h2><div class="adr">${esc(o.adresse)}${o.anteil && o.anteil < 1 ? ` · Anteil ${pct(o.anteil * 100, 0)}${o.mit ? " (mit " + esc(o.mit) + ")" : ""}` : ""}${o.nutzung === "selbst" ? " · selbst genutzt" : ""}${o.status && /bau/i.test(o.status) ? " · im Bau" : ""}</div>
