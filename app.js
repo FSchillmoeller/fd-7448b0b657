@@ -228,8 +228,13 @@ function diagramm(el, { labels, serien, art = "linie", hoehe = 230, xfmt = x => 
   labels.forEach((lb, i) => { if (i % jede === 0 || (art === "linie" && i === n - 1 && n < 30)) s += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${xfmt(lb)}</text>`; });
   if (art === "linie") {
     for (const se of sicht) {
-      let d = "", an = false;
-      se.werte.forEach((v, i) => { if (v == null) { an = false; return; } d += (an ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); an = true; });
+      let d = "", an = false, erst = null, letzt = null;
+      se.werte.forEach((v, i) => {
+        if (v == null) { an = false; return; }
+        d += !an ? "M" + x(i).toFixed(1) + " " + y(v).toFixed(1) : se.stufe ? "H" + x(i).toFixed(1) + "V" + y(v).toFixed(1) : "L" + x(i).toFixed(1) + " " + y(v).toFixed(1);
+        an = true; if (erst == null) erst = i; letzt = i;
+      });
+      if (se.flaeche && erst != null) s += `<path d="${d}L${x(letzt).toFixed(1)} ${y(Math.max(ax.lo, 0)).toFixed(1)}L${x(erst).toFixed(1)} ${y(Math.max(ax.lo, 0)).toFixed(1)}Z" fill="${se.farbe}" fill-opacity="0.18" stroke="none"/>`;
       if (!se.nurPunkte) s += `<path d="${d}" fill="none" stroke="${se.farbe}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${se.strich ? ` stroke-dasharray="${se.strich}"` : ""}/>`;
       if (se.nurPunkte) se.werte.forEach((v, i) => { if (v != null) s += `<circle cx="${x(i)}" cy="${y(v)}" r="5" fill="${css("--card")}" stroke="${se.farbe}" stroke-width="2.5"/>`; });
       else if (n <= 16) se.werte.forEach((v, i) => { if (v != null) s += `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="${se.farbe}" stroke="${css("--card")}" stroke-width="2"/>`; });
@@ -446,14 +451,22 @@ function zeichneDepots(D) {
       L.map(d => [esc(d.name), eur(d.wert), eur(d.eingezahlt), eur(d.gewinn), datumDe(d.datum)])));
   } else {
     const J = dp.jahre || [];
-    if (J.length) h += card("Pro Jahr nach Buchungsdatum", legende([{ name: "Einzahlungen", farbe: S1 }, { name: "Käufe", farbe: S4 }, { name: "Erträge", farbe: S3 }, { name: "Auszahlungen", farbe: S2 }])
+    let hJahr = "";   // kommt nach dem Verlauf
+    if (J.length) hJahr = card("Pro Jahr nach Buchungsdatum", legende([{ name: "Einzahlungen", farbe: S1 }, { name: "Käufe", farbe: S4 }, { name: "Erträge", farbe: S3 }, { name: "Auszahlungen", farbe: S2 }])
       + platz("c-dpj", { labels: J.map(j => String(j.jahr)), art: "balken", serien: [
           { name: "Einzahlungen", farbe: S1, werte: J.map(j => j.einzahlung) }, { name: "Käufe", farbe: S4, werte: J.map(j => j.kauf + j.wiederanlage) },
           { name: "Erträge", farbe: S3, werte: J.map(j => j.ertrag) }, { name: "Auszahlungen", farbe: S2, werte: J.map(j => j.auszahlung) }] })
       + tabelle([["Jahr"], ["Einzahlungen", 1], ["Auszahlungen", 1], ["Käufe", 1], ["Wiederanlage", 1], ["Verkäufe", 1], ["Erträge", 1], ["Gebühren", 1], ["Steuern", 1], ["Buchungen", 1]],
           J.slice().reverse().map(j => [j.jahr, eur(j.einzahlung), eur(j.auszahlung), eur(j.kauf), eur(j.wiederanlage), eur(j.verkauf), eur(j.ertrag), eur(j.gebuehr), eur(j.steuer), j.anzahl])));
     const EV = dp.einzahlungen_verlauf || [], WG = Object.fromEntries((dp.wert_geschaetzt || []).map(x => [x.m, x.w]));
-    if (EV.length > 1) {
+    if (dp.grafik && dp.grafik.punkte.length > 2) {
+      const G = dp.grafik.punkte;
+      h += card("Eingezahlt und Depotwert im Verlauf", legende([{ name: "Eingezahlt (netto)", farbe: S4 }, { name: "Depotwert", farbe: S1 }])
+        + platz("c-dpv", { labels: G.map(x => x.d), xfmt: d => monat(d.slice(0, 7)), nullLinie: true, serien: [
+            { name: "Depotwert", farbe: S1, werte: G.map(x => x.w), flaeche: true },
+            { name: "Eingezahlt (netto)", farbe: S4, werte: G.map(x => x.e), stufe: true }] }),
+        `${datumDe(dp.grafik.von)} bis ${datumDe(dp.grafik.bis)} wöchentlich aus der Wertentwicklungsgrafik der Depotbank abgelesen (Genauigkeit etwa ±1 % der Skala) · letzter Punkt exakt laut Bericht`);
+    } else if (EV.length > 1) {
       const wv = Object.fromEntries((dp.wert_verlauf || []).map(x => [x.d.slice(0, 7), x.w]));
       const EVm = Object.fromEntries(EV.map(x => [x.m, x.netto]));
       const mon = [...new Set([...EV.map(x => x.m), ...Object.keys(WG), ...Object.keys(wv)])].filter(m => m >= EV[0].m).sort();
@@ -465,6 +478,7 @@ function zeichneDepots(D) {
         dp.interpoliert ? `Kauf ${monat(dp.interpoliert[0])} und Depotauszug ${monat(dp.interpoliert[1])} sind belegt – dazwischen gleichmäßig verteilt (Schätzung, keine Tageskurse)`
           : "Depotwert = Bestand × letzter bekannter Kurs aus den Transaktionen, ab Kontoauszug echte Stände");
     }
+    h += hJahr;
     if ((dp.perf || []).length > 2) h += card("Wertentwicklung seit Kauf (%)", platz("c-perf", { labels: dp.perf.map(x => x.d), xfmt: d => datumDe(d).slice(3), nullLinie: true,
       serien: [{ name: "Wertentwicklung %", farbe: S3, werte: dp.perf.map(x => x.p) }] }), "laut Depotbank");
     const P = dp.positionen || [];
