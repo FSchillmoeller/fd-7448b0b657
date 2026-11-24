@@ -98,7 +98,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "da0db7676e";
+const APP_VERSION = "0d6664d2e9";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -342,8 +342,12 @@ function zeichneVermoegen(D) {
   const einz = mitEinz.reduce((a, d) => a + d.eingezahlt, 0), gew = mitEinz.reduce((a, d) => a + (d.wert - d.eingezahlt), 0);
   const nKonten = V.konten.filter(k => k.art === "giro" || k.art === "tagesgeld").length;
   const vl = V.verlauf.slice(-zeitraum - 1);
-  let h = `<div class="card hero"><div class="l">Nettovermögen</div><div class="v">${eur(V.netto)}</div>
-    <div class="d">${delta(V.netto, V.netto_vorjahr) ? delta(V.netto, V.netto_vorjahr) + " zum Vorjahr" : ""}</div></div>`;
+  const SV = V.sofort;
+  let h = `<div class="card hero${SV ? " hero2" : ""}"><div class="hteil"><div class="l">Nettovermögen</div><div class="v">${eur(V.netto)}</div>
+    <div class="d">${delta(V.netto, V.netto_vorjahr) ? delta(V.netto, V.netto_vorjahr) + " zum Vorjahr" : ""}</div></div>`
+    + (SV ? `<div class="hteil"><div class="l">Sofort verfügbar</div><div class="v">${eur(SV.wert)}</div>
+    <div class="d">${delta(SV.wert, SV.vorjahr) ? delta(SV.wert, SV.vorjahr) + " zum Vorjahr" : ""}</div>
+    <div class="d klein">Depots ${kurz(SV.teile.Depots)} € · Konten ${kurz(SV.teile.Konten)} € · Vorsorge kurzfr. ${kurz(SV.teile["Vorsorge kurzfristig"])} €</div></div>` : "") + `</div>`;
   h += `<div class="grid kpis">
     <button class="card kpi kachel" data-ziel="depots"><div class="l">Depot & Kapitalanlage ›</div><div class="v">${eur(t.Depot)}</div>
       <div class="d">${mitEinz.length ? `eingezahlt ${eur(einz)} · Gewinn ${eur(gew)}` : DP.length + " Depots & Anlagen"}</div></button>
