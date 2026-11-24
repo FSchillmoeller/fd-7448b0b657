@@ -380,6 +380,16 @@ function zeichneKonten(D) {
         + (k.nummer || k.institut ? `<div class="klein">${[k.institut, k.nummer && !k.name.replace(/\s/g, "").includes(k.nummer.replace(/\s/g, "")) ? k.nummer : null].filter(Boolean).map(esc).join(" · ")}</div>` : ""),
         k.zins != null ? pct(k.zins) + " p.a." : "", eur(k.saldo), datumDe(k.datum)])) + `</div>`;
   }
+  const RT = D.renten || [];
+  if (RT.length) h += card("Gesetzliche Rente – nur zur Information",
+    tabelle([["Person"], ["Stand", 1], ["Anwartschaft heute", 1], ["Hochgerechnet", 1], ["ab", 1], ["Erwerbsminderung", 1]],
+      RT.map(r => [esc(r.person || "–") + (r.versicherungsnummer ? `<div class="klein">Vers.-Nr. ${esc(r.versicherungsnummer)}</div>` : ""), datumDe(r.datum),
+        r.rente_bisher != null ? eur(r.rente_bisher) + "<span class=\"kl\"> /Mon.</span>" : "–",
+        r.rente_hochgerechnet != null ? `<b>${eur(r.rente_hochgerechnet)}</b><span class="kl"> /Mon.</span>` : "–",
+        r.rentenbeginn ? datumDe(r.rentenbeginn) : "–",
+        r.erwerbsminderung != null ? eur(r.erwerbsminderung) + "<span class=\"kl\"> /Mon.</span>" : "–"])),
+    "Monatliche Renten laut Renteninformation der Deutschen Rentenversicherung · zählen nicht zum Vermögen und nicht zur Vorsorge-Summe · hochgerechnet = bei weiter durchschnittlichen Beiträgen, ohne Rentenanpassung"
+    + RT.filter(r => r.rente_1pz).map(r => ` · ${esc((r.person || "").split(" ")[0])} mit 1 % / 2 % Anpassung: etwa ${eur(r.rente_1pz)} / ${eur(r.rente_2pz)}`).join(""));
   const det = K.filter(k => !["depot", "darlehen", "mietkonto"].includes(k.art) && (k.bewegungen.length || k.verlauf.length > 1));
   if (det.length) {
     if (kontoWahl >= det.length) kontoWahl = 0;
