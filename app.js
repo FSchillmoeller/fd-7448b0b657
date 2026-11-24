@@ -603,9 +603,67 @@ function zeichneGeschaeft(D) {
   $("#g-abschluss").innerHTML = h;
   document.querySelectorAll("#seg-posten button").forEach(b => b.onclick = () => { gPostenJahr = +b.dataset.j; zeichneGeschaeft(D); requestAnimationFrame(diagrammeZeichnen); });
 
+  // --- Statistiken (Einheiten laut Gesamtstatistik der Zentrale)
+  const ST = G.statistik || [];
+  const einh = (v, n = 0) => v == null ? "–" : v.toLocaleString("de-DE", { minimumFractionDigits: n, maximumFractionDigits: n }) + " E";
+  const aktivN = j => j.mitarbeiter.filter(m => m.einheiten).length;
+  const stJahre = [];
+  if (ST.length) for (let y = ST[0].jahr; y <= ST[ST.length - 1].jahr; y++) stJahre.push(y);
+  const stJ = y => ST.find(j => j.jahr === y);
+  const fehlt = stJahre.filter(y => !stJ(y));
+  let hs = "";
+  if (!ST.length) hs = card("Statistiken", leer("Noch keine Gesamtstatistik. Die Jahresliste „Abgerechnetes Geschäft – Gesamtstatistik“ der Zentrale (PDF oder Excel) einfach in den Eingang legen."));
+  else {
+    const Z = ST[ST.length - 1], V = ST.length > 1 ? ST[ST.length - 2] : null;
+    hs += `<div class="grid kpis">
+      ${kpi(`Gruppenumsatz ${Z.jahr}`, einh(Z.gruppe), V ? `${Z.gruppe >= V.gruppe ? "+" : ""}${pct((Z.gruppe / V.gruppe - 1) * 100, 0)} zu ${V.jahr}` : "")}
+      ${kpi("Anteil am Gesamtumsatz", pct(Z.gruppe / Z.gesamt * 100, 2), `Zentrale gesamt ${einh(Z.gesamt)}`)}
+      ${kpi("Mitarbeiter", aktivN(Z) + (Z.mitarbeiter.length > aktivN(Z) ? ` <span class="kl">von ${Z.mitarbeiter.length}</span>` : ""), "mit Umsatz im Jahr")}
+      ${kpi("Eigene Einheiten", einh(Z.eigen), Z.gruppe ? pct(Z.eigen / Z.gruppe * 100, 0) + " des Gruppenumsatzes" + (Z.stufe ? " · Stufe " + esc(Z.stufe) : "") : "")}
+    </div>`;
+    hs += card("Gruppenumsatz pro Jahr", legende([{ name: "Eigene Einheiten", farbe: S1 }, { name: "Einheiten der Mitarbeiter", farbe: S2 }])
+      + platz("c-st-gruppe", { art: "stapel", labels: stJahre, serien: [
+          { name: "Eigene Einheiten", farbe: S1, werte: stJahre.map(y => stJ(y) ? stJ(y).eigen : null) },
+          { name: "Einheiten der Mitarbeiter", farbe: S2, werte: stJahre.map(y => stJ(y) ? Math.max(0, stJ(y).gruppe - stJ(y).eigen) : null) }] }),
+      "Gruppenumsatz = E-Struktur laut Statistik der Zentrale" + (fehlt.length ? ` · ${fehlt.join(", ")}: keine Statistik vorhanden` : ""));
+    hs += card("Anteil am Gesamtumsatz der Zentrale", legende([{ name: "mit Gruppe", farbe: S1 }, { name: "nur eigene Einheiten", farbe: S3 }])
+      + platz("c-st-anteil", { labels: stJahre, xfmt: y => y, serien: [
+          { name: "mit Gruppe", farbe: S1, werte: stJahre.map(y => stJ(y) ? stJ(y).gruppe / stJ(y).gesamt * 100 : null), fmt: v => pct(v, 2) },
+          { name: "nur eigene Einheiten", farbe: S3, werte: stJahre.map(y => stJ(y) ? stJ(y).eigen / stJ(y).gesamt * 100 : null), fmt: v => pct(v, 2) }] }));
+    hs += card("Alle Jahre", tabelle([["Jahr"], ["Stufe"], ["Zentrale gesamt", 1], ["Eigene", 1], ["Mitarbeiter-Einheiten", 1], ["Gruppe", 1], ["Anteil Gruppe", 1], ["Anteil eigen", 1], ["Mitarbeiter", 1]],
+      stJahre.slice().reverse().map(y => { const j = stJ(y); return j
+        ? [y, esc(j.stufe || "–"), einh(j.gesamt), einh(j.eigen), einh(j.gruppe - j.eigen), `<b>${einh(j.gruppe)}</b>`, pct(j.gruppe / j.gesamt * 100, 2), pct(j.eigen / j.gesamt * 100, 2), aktivN(j) + (j.mitarbeiter.length > aktivN(j) ? ` / ${j.mitarbeiter.length}` : "")]
+        : [y, `<span class="rot">keine Statistik</span>`, "", "", "", "", "", "", ""]; })),
+      "Einheiten (E) laut „Abgerechnetes Geschäft – Gesamtstatistik“ · Mitarbeiter: mit Umsatz / insgesamt in der Struktur · gespeichert werden nur deine Zeile, deine Gruppe und die Summe der Zentrale");
+  }
+  $("#g-statistik").innerHTML = hs;
+
   // --- Mitarbeiter
   const PA = gj.filter(j => (j.posten || []).some(p => p.gruppe === "Personal"));
-  $("#g-mitarbeiter").innerHTML = card("Umsatz und Ergebnis nach Mitarbeiter", leer("Noch keine sauber zuordenbaren Daten. Sobald Abrechnungen mit Vermittler- bzw. Mitarbeiternummer vorliegen, erscheinen hier Umsatz und – wenn eindeutig zuordenbar – Ergebnis je Mitarbeiter."))
+  let hm = "";
+  if (ST.length) {
+    const alle = {};
+    ST.forEach(j => j.mitarbeiter.forEach(m => {
+      const a = alle[m.id] || (alle[m.id] = { name: m.name, stufe: m.stufe, ebene: m.ebene, j: {}, erst: j.jahr, summe: 0 });
+      a.j[j.jahr] = m.einheiten; a.stufe = m.stufe || a.stufe; a.ebene = m.ebene ?? a.ebene; a.summe += m.einheiten || 0;
+    }));
+    const liste = Object.values(alle).sort((a, b) => a.erst - b.erst || b.summe - a.summe);
+    hm += card("Mitarbeiter pro Jahr", legende([{ name: "mit Umsatz", farbe: S1 }, { name: "ohne Umsatz", farbe: S3 }])
+      + platz("c-ma-anzahl", { art: "stapel", labels: stJahre, serien: [
+          { name: "mit Umsatz", farbe: S1, werte: stJahre.map(y => stJ(y) ? aktivN(stJ(y)) : null), fmt: v => v + " Mitarbeiter" },
+          { name: "ohne Umsatz", farbe: S3, werte: stJahre.map(y => stJ(y) ? stJ(y).mitarbeiter.length - aktivN(stJ(y)) : null), fmt: v => v + " Mitarbeiter" }] }),
+      "alle Vermittler unter dir in der Struktur laut Statistik der Zentrale" + (fehlt.length ? ` · ${fehlt.join(", ")}: keine Statistik` : ""));
+    hm += card("Einheiten deiner Mitarbeiter", tabelle([["Jahr"], ["Mitarbeiter", 1], ["Einheiten der Mitarbeiter", 1], ["Ø je Mitarbeiter mit Umsatz", 1], ["Anteil am Gruppenumsatz", 1]],
+      ST.slice().reverse().map(j => { const t = j.gruppe - j.eigen, n = aktivN(j);
+        return [j.jahr, n + (j.mitarbeiter.length > n ? ` / ${j.mitarbeiter.length}` : ""), einh(t), n ? einh(t / n) : "–", j.gruppe ? pct(t / j.gruppe * 100, 0) : "–"]; })),
+      "Einheiten der Mitarbeiter = Gruppenumsatz minus eigene Einheiten. Was du daran verdient hast (Differenzprovision), steht nicht in der Statistik – dafür bräuchte ich die Abrechnungen bzw. den Einheitenwert je Stufe.");
+    const maJahre = stJahre.filter(y => stJ(y) && stJ(y).mitarbeiter.length);
+    hm += card("Wer war wann dabei", tabelle([["Mitarbeiter"], ["Stufe"], ...maJahre.map(y => [String(y), 1])],
+      liste.map(a => [`${a.ebene > 1 ? "<span class=\"kl\">↳ </span>" : ""}${esc(a.name)}`, esc(a.stufe || "–"),
+        ...maJahre.map(y => y in a.j ? (a.j[y] ? a.j[y].toLocaleString("de-DE", { maximumFractionDigits: 0 }) : "<span class=\"kl\">0</span>") : "")])),
+      "Einheiten je Jahr (Einzelumsatz) · leer = nicht in deiner Struktur · ↳ = nicht direkt unter dir, sondern unter einer deiner Führungskräfte · Stufe = zuletzt");
+  }
+  $("#g-mitarbeiter").innerHTML = hm + (!ST.length ? card("Mitarbeiter", leer("Sobald die Gesamtstatistik der Zentrale im Eingang liegt, erscheinen hier deine Mitarbeiter je Jahr.")) : "")
     + (PA.length ? card("Personalaufwand laut Abschluss", tabelle([["Jahr"], ["Personalaufwand", 1], ["Anteil an den Kosten", 1]],
         PA.slice().reverse().map(j => { const p = j.posten.find(x => x.gruppe === "Personal"); return [j.jahr, eur(p.betrag), pct(p.betrag / j.kosten * 100, 0)]; }))) : "");
 
