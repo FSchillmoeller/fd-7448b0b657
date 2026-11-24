@@ -97,7 +97,21 @@ async function oeffnenMitDk(dk) {
   zeichnen();
 }
 
+// Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
+const APP_VERSION = "da0db7676e";
+async function neueVersion() {
+  if (APP_VERSION.startsWith("__")) return false;
+  try {
+    const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return false;
+    const v = (await r.json()).v;
+    if (v && v !== APP_VERSION && new URLSearchParams(location.search).get("v") !== v) { location.replace(location.pathname + "?v=" + v + location.hash); return true; }
+  } catch (e) { console.error(e); }
+  return false;
+}
+
 async function start() {
+  if (await neueVersion()) return;
   const m = location.hash.match(/einrichten=([\w-]+)/);
   if (m) {
     const dk = b64ud(m[1]);
@@ -150,7 +164,7 @@ function sperren() {
   $("#app").hidden = true; $("#sperre").hidden = false; fehler("");
 }
 $("#btn-sperren").onclick = sperren;
-$("#btn-neu").onclick = async () => { try { await oeffnenMitDk(DK); } catch (e) { fehler(e.message); } };
+$("#btn-neu").onclick = async () => { try { if (await neueVersion()) return; await oeffnenMitDk(DK); } catch (e) { fehler(e.message); } };
 // automatisch sperren, wenn die App länger als 5 Minuten im Hintergrund war
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) versteckt = Date.now();
