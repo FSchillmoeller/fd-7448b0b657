@@ -50,6 +50,7 @@ nav { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 
 .bereiche button[aria-selected="true"] { background: var(--t1); color: var(--bg); }
 .g-kopf { display: grid; gap: 10px; margin-bottom: 12px; }
 .g-kopf .jahre { justify-self: start; float: none; }
+.kl { color: var(--t3); font-size: .78em; font-weight: 400; }
 .hinweis { color: var(--t3); font-size: 12.5px; padding: 0 2px; }
 .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--line); border-radius: 11px; padding: 3px; gap: 3px; }
 .tabs button { border: 0; background: none; color: var(--t2); padding: 8px 2px; border-radius: 9px; font-size: 14px; font-weight: 500; line-height: 1.2; }
@@ -208,6 +209,7 @@ footer details { margin-top: 6px; }
         <button role="tab" data-tab="g-cashflow">Cashflow</button>
         <button role="tab" data-tab="g-abschluss" aria-selected="true">Steuern &amp; Abschlüsse</button>
         <button role="tab" data-tab="g-mitarbeiter">Mitarbeiter</button>
+        <button role="tab" data-tab="g-statistik">Statistiken</button>
         <button role="tab" data-tab="g-einnahmen">Einnahme&shy;quellen</button>
       </div>
     </nav>
@@ -218,6 +220,7 @@ footer details { margin-top: 6px; }
     <section id="g-cashflow"></section>
     <section id="g-abschluss"></section>
     <section id="g-mitarbeiter"></section>
+    <section id="g-statistik"></section>
     <section id="g-einnahmen"></section>
     <footer id="fuss"></footer>
   </div>
