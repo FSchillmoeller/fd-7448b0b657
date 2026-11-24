@@ -383,7 +383,8 @@ function zeichneKonten(D) {
   const RT = D.renten || [];
   if (RT.length) h += card("Gesetzliche Rente – nur zur Information",
     tabelle([["Person"], ["Stand", 1], ["Anwartschaft heute", 1], ["Hochgerechnet", 1], ["ab", 1], ["Erwerbsminderung", 1]],
-      RT.map(r => [esc(r.person || "–") + (r.versicherungsnummer ? `<div class="klein">Vers.-Nr. ${esc(r.versicherungsnummer)}</div>` : ""), datumDe(r.datum),
+      RT.map(r => [esc(r.person || "–") + (r.versicherungsnummer ? `<div class="klein">Vers.-Nr. ${esc(r.versicherungsnummer)}</div>` : "")
+        + (r.hinweis ? `<div class="klein">${esc(r.hinweis)}</div>` : ""), datumDe(r.datum),
         r.rente_bisher != null ? eur(r.rente_bisher) + "<span class=\"kl\"> /Mon.</span>" : "–",
         r.rente_hochgerechnet != null ? `<b>${eur(r.rente_hochgerechnet)}</b><span class="kl"> /Mon.</span>` : "–",
         r.rentenbeginn ? datumDe(r.rentenbeginn) : "–",
