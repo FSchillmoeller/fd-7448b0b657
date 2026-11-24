@@ -98,7 +98,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "0d6664d2e9";
+const APP_VERSION = "fd8461260b";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
