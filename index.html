@@ -55,7 +55,7 @@ nav { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 
 .filter { padding: 10px 14px; } .filter label { display: flex; gap: 10px; align-items: center; color: var(--t2); font-size: 13px; } .filter select { flex: 1; min-width: 0; width: 100%; max-width: 420px; }
 .ma-link { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--t3); }
 .pv-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-@media (max-width: 640px) { .pv-filter .lang { display: none; } }
+@media (max-width: 640px) { .pv-filter .lang { display: none; } .pv-filter .seg { flex-wrap: wrap; max-width: 100%; min-width: 0; } .pv-filter .seg button { white-space: nowrap; } }
 .such { width: 100%; max-width: 420px; font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); color: var(--t1); margin: 2px 0 10px; }
 @media (max-width: 560px) { #tabs-geschaeft { grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; } #tabs-geschaeft button { padding: 8px 9px; } }
 .kl { color: var(--t3); font-size: .78em; font-weight: 400; }
@@ -241,6 +241,6 @@ footer details { margin-top: 6px; }
     <footer id="fuss"></footer>
   </div>
 </div>
-<script src="app.js?v=f3aad052cf"></script>
+<script src="app.js?v=b933c3eadb"></script>
 </body>
 </html>

@@ -98,7 +98,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "f3aad052cf";
+const APP_VERSION = "b933c3eadb";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -539,7 +539,7 @@ function zeichneDepots(D) {
 
 // ------------------------------------------------------------------ Geschäft
 let gJahr = null, gPostenJahr = null, hkJahr = null, maWahl = "";
-let pvJahr = null, pvSucheK = "", pvSucheV = "", pvBereich = "alle", pvNummer = "gesamt", pvMonat = "alle";
+let pvJahr = null, pvSucheK = "", pvSucheV = "", pvBereich = "alle", pvNummer = "gesamt", pvMonat = "alle", pvSortK = "wert";
 const tausch = (a, b) => a == null || b == null ? "" : delta(a, b);
 
 function geschaeftKopf(D) {
@@ -785,12 +785,13 @@ function zeichneProvisionen(D) {
   const wert = c => { let v = 0; for (const m in c.mo) if (passt(m)) v += c.mo[m]; return v; };
   const einhV = c => { let v = 0; for (const m in (c.emo || {})) if (passt(m)) v += c.emo[m]; return v; };
   const anz = c => { let v = 0; for (const m in c.nmo) if (passt(m)) v += c.nmo[m]; return v; };
+  const lauf = c => { let v = 0; for (const m in (c.ml || {})) if (passt(m)) v += c.ml[m]; return v; };   // Bestand, KBB, Dynamik
   const C = C0.filter(c => anz(c));
   const gruppe = (liste, key) => { const g = new Map(); for (const c of liste) { const k = key(c); if (k == null) continue;
-    const e = g.get(k) || { k, wert: 0, einh: 0, n: 0, gesamt: 0, c: [] }; e.wert += wert(c); e.einh += einhV(c); e.n += anz(c);
+    const e = g.get(k) || { k, wert: 0, lauf: 0, einh: 0, n: 0, gesamt: 0, c: [] }; e.wert += wert(c); e.lauf += lauf(c); e.einh += einhV(c); e.n += anz(c);
     e.gesamt += Object.values(c.mo).reduce((a, x) => a + x, 0); e.c.push(c); g.set(k, e); } return [...g.values()].sort((a, b) => b.wert - a.wert); };
   const zeitraum = pvMonat !== "alle" ? monat(pvMonat) : (pvJahr === "alle" ? "gesamt" : pvJahr), alleZeit = pvMonat === "alle" && pvJahr === "alle";
-  const AB = PV.abrechnungen.filter(a => (pvNummer === "gesamt" || a.nr === pvNummer) && (pvBereich === "alle" || a.bereich === pvBereich)
+  const AB = PV.abrechnungen.filter(a => (pvNummer === "gesamt" || a.nr === pvNummer) && (pvBereich === "alle" || (a.bereiche || [a.bereich]).includes(pvBereich))
     && passt(a.periode || (a.datum || "").slice(0, 7)));
   const eig = C.filter(c => !c.pa).reduce((a, c) => a + wert(c), 0), par = C.filter(c => c.pa).reduce((a, c) => a + wert(c), 0), netto = eig + par;
   const srLetzt = nr => { const l = PV.stornoreserve.filter(x => x.nr === nr && x.w != null); return l[l.length - 1]; };
@@ -812,17 +813,39 @@ function zeichneProvisionen(D) {
   </div>`;
   const MM = (pvMonat !== "alle" ? [pvMonat] : monateJahr).filter(m => C.some(c => c.nmo[m]));
   const proMonat = (m, f) => C.filter(f).reduce((a, c) => a + (c.mo[m] || 0), 0);
-  h += card("Provision je Abrechnungsmonat", legende([{ name: "Eigenes Geschäft", farbe: S1 }, { name: "Über Mitarbeiter", farbe: S2 }])
-    + platz("c-pv-monat", { art: "stapel", labels: MM, xfmt: monat, serien: [
-        { name: "Eigenes Geschäft", farbe: S1, werte: MM.map(m => proMonat(m, c => !c.pa)) },
-        { name: "Über Mitarbeiter", farbe: S2, werte: MM.map(m => proMonat(m, c => c.pa)) }] }),
+  const FARBEN = [S1, S2, css("--s3"), css("--s4")];
+  const nachNummer = pvNummer === "gesamt" && NR.length > 1;     // Gesamt: Balken nach Nummer (6636 / 7191 / Pool)
+  const serien = nachNummer
+    ? NR.map((nr, i) => ({ name: PV.nummern[i].name.split(" · ")[0], farbe: FARBEN[i % 4], werte: MM.map(m => proMonat(m, c => c.nr === nr)) }))
+    : [{ name: "Eigenes Geschäft", farbe: S1, werte: MM.map(m => proMonat(m, c => !c.pa)) },
+       { name: "Über Mitarbeiter", farbe: S2, werte: MM.map(m => proMonat(m, c => c.pa)) }];
+  h += card(nachNummer ? "Provision je Abrechnungsmonat nach Nummer" : "Provision je Abrechnungsmonat",
+    legende(serien.map(x => ({ name: x.name, farbe: x.farbe }))) + platz("c-pv-monat", { art: "stapel", labels: MM, xfmt: monat, serien }),
     "netto nach Stornoreserve, ohne USt · nur eingelesene Abrechnungen, alle Läufe eines Monats zusammen · Monate ohne Abrechnung fehlen");
   const MA = gruppe(C.filter(c => c.pa), c => c.pa);
   h += card(`Was dir deine Mitarbeiter bringen · ${zeitraum}`, MA.length ? tabelle([["Mitarbeiter"], ["Provision für dich", 1], ["Einheiten", 1], ["Buchungen", 1], ["Anteil", 1]],
       MA.map(m => [esc(m.k), `<b>${eurC(m.wert)}</b>`, einh(m.einh), m.n, par ? pct(m.wert / par * 100, 0) : "–"])) : leer("Keine Mitarbeiter-Buchungen im Zeitraum."),
     "deine Provision aus dem Geschäft deiner Vertriebspartner (Abschnitt „Vertriebspartner“ der Abrechnung), nach Stornoreserve");
-  h += card("Kunden", `<input id="pv-such-k" class="such" type="search" placeholder="Kundennummer suchen, z.B. K00042" value="${esc(pvSucheK)}"><div id="pv-kunden"></div>`,
-    "online nur Kundennummern – die Namen stehen lokal auf deinem Mac in ~/Finanzen/Auswertungen/Provisionen.xlsx (Blatt „Kunden“) · Kundennummer antippen zeigt die Verträge");
+  const KG = gruppe(C.filter(c => c.kn), c => c.kn);
+  const ohneK = C.filter(c => !c.kn).reduce((a, c) => a + wert(c), 0);
+  const kSum = KG.reduce((a, k) => a + k.wert, 0);
+  // wie viele Kunden bringen 80 % der Provision?
+  let kum = 0, n80 = 0; for (const k of KG) { if (kum >= 0.8 * kSum) break; kum += k.wert; n80++; }
+  const BAENDER = [["unter 0 € (Storno)", -Infinity, 0], ["0 – 25 €", 0, 25], ["25 – 100 €", 25, 100], ["100 – 250 €", 100, 250], ["250 – 1.000 €", 250, 1000], ["über 1.000 €", 1000, Infinity]];
+  const band = BAENDER.map(([l, u, o]) => { const L = KG.filter(k => k.wert >= u && k.wert < o && !(u === 0 && k.wert < 0)); return [l, L.length, L.reduce((a, k) => a + k.wert, 0), L.reduce((a, k) => a + k.lauf, 0)]; }).filter(b => b[1]);
+  h += card(`Kundenwert · ${zeitraum}`, KG.length ? `<div class="grid kpis">
+      ${kpi("Kunden mit Provision", KG.length.toLocaleString("de-DE"), `Ø ${eurC(kSum / KG.length)} je Kunde`)}
+      ${kpi("80 % der Provision von", `${n80} Kunden`, `${pct(n80 / KG.length * 100, 0)} deiner Kunden`)}
+      ${kpi("davon laufend", eurC(KG.reduce((a, k) => a + k.lauf, 0)), "Bestand, KBB, Dynamik – bleibt ohne neuen Abschluss")}
+      ${kpi("Kunden unter 25 €", KG.filter(k => k.wert < 25).length.toLocaleString("de-DE"), `zusammen ${eurC(KG.filter(k => k.wert < 25).reduce((a, k) => a + k.wert, 0))}`)}
+    </div>` + tabelle([["Provision je Kunde"], ["Kunden", 1], ["Provision", 1], ["davon laufend", 1], ["Anteil", 1]],
+      band.map(([l, n, w, lf]) => [esc(l), n.toLocaleString("de-DE"), eurC(w), eurC(lf), kSum ? pct(w / kSum * 100, 0) : "–"]))
+    : leer("Keine Kunden im Zeitraum."),
+    "Grundlage für die Frage, welche Kunden du abgeben kannst: Provision je Kunde im gewählten Zeitraum, nach Stornoreserve, ohne USt"
+    + (ohneK ? ` · nicht enthalten: ${eurC(ohneK)} ohne Kundenbezug (laufende FNZ-Provision rechnet FNZ je Fonds ab, nicht je Kunde; Overhead aus dem Pool)` : ""));
+  h += card("Kunden", `<div class="pv-filter">${seg("seg-pvk", ["wert", "lauf"], pvSortK, w => w === "wert" ? "nach Provision" : "nach laufender Provision")}</div>`
+    + `<input id="pv-such-k" class="such" type="search" placeholder="Kundennummer suchen, z.B. K00042" value="${esc(pvSucheK)}"><div id="pv-kunden"></div>`,
+    "online nur Kundennummern – die Namen stehen lokal auf deinem Mac in ~/Finanzen/Auswertungen/Provisionen.xlsx (Blätter „Kunden“ und „Kundenwert“) · laufend = Bestand, KBB, Dynamik · Kundennummer antippen zeigt die Verträge");
   h += card("Verträge", `<input id="pv-such-v" class="such" type="search" placeholder="Policen-/Depotnummer, Kundennummer oder Gesellschaft" value="${esc(pvSucheV)}"><div id="pv-vertraege"></div>`,
     "ein Vertrag = eine Policen- bzw. Depotnummer; Summe aller Buchungen (Abschluss, Dynamik, Bestand, KBB, Stornos)");
   const SP = gruppe(C, c => c.sp).filter(x => x.wert), GS = gruppe(C, c => c.g).filter(x => x.wert).slice(0, 12);
@@ -844,11 +867,12 @@ function zeichneProvisionen(D) {
 
   const kunden = () => {
     const q = pvSucheK.trim().toUpperCase();
-    let K = gruppe(C, c => c.kn).filter(k => !q || String(k.k).includes(q));
+    let K = KG.filter(k => !q || String(k.k).includes(q));
+    if (pvSortK === "lauf") K = K.slice().sort((a, b) => b.lauf - a.lauf);
     const n = K.length;
     K = K.slice(0, q ? 200 : 30);
-    $("#pv-kunden").innerHTML = K.length ? tabelle([["Kunde"], [`Provision ${zeitraum}`, 1], ...(alleZeit ? [] : [["alle Jahre", 1]]), ["Verträge", 1], ["Betreut von"], ["Sparten"]],
-        K.map(k => [`<a href="#" class="pv-k" data-k="${k.k}">${k.k}</a>`, `<b>${eurC(k.wert)}</b>`, ...(alleZeit ? [] : [eurC(k.gesamt)]), new Set(k.c.map(c => c.k)).size,
+    $("#pv-kunden").innerHTML = K.length ? tabelle([["Kunde"], [`Provision ${zeitraum}`, 1], ["davon laufend", 1], ...(alleZeit ? [] : [["alle Jahre", 1]]), ["Verträge", 1], ["Betreut von"], ["Sparten"]],
+        K.map(k => [`<a href="#" class="pv-k" data-k="${k.k}">${k.k}</a>`, `<b>${eurC(k.wert)}</b>`, eurC(k.lauf), ...(alleZeit ? [] : [eurC(k.gesamt)]), new Set(k.c.map(c => c.k)).size,
           esc([...new Set(k.c.map(c => c.pa || "du"))].join(", ")), esc([...new Set(k.c.map(c => c.sp))].join(", "))]))
         + (n > K.length ? `<div class="hinweis">${K.length} von ${n} Kunden – Suche nutzen für weitere</div>` : "")
       : leer("Keine Kunden gefunden.");
@@ -860,7 +884,7 @@ function zeichneProvisionen(D) {
     const n = V.length;
     V = V.slice(0, q ? 300 : 30);
     $("#pv-vertraege").innerHTML = V.length ? tabelle([["Police / Depot"], ["Kunde"], [`Provision ${zeitraum}`, 1], ["Buchungen", 1], ["Produkt"], ["Sparte"], ["Beginn", 1], ["Betreut von"], ...(pvNummer === "gesamt" ? [["Nummer"]] : [])],
-        V.map(v => { const c = v.c[0]; return [esc(c.po || "–"), esc(c.kn || "–"), `<b>${eurC(v.wert)}</b>`, v.n, esc(c.pr || c.g), esc(c.sp), c.be ? datumDe(c.be) : "–",
+        V.map(v => { const c = v.c[0]; return [esc(c.po || "–"), c.kn ? esc(c.kn) : `<span class="kl">ohne Kunde</span>`, `<b>${eurC(v.wert)}</b>`, v.n, esc(c.pr || c.g), esc(c.sp), c.be ? datumDe(c.be) : "–",
           esc([...new Set(v.c.map(x => x.pa || "du"))].join(", ")), ...(pvNummer === "gesamt" ? [esc([...new Set(v.c.map(x => x.nr))].join(", "))] : [])]; }))
         + (n > V.length ? `<div class="hinweis">${V.length} von ${n} Verträgen – Suche nutzen für weitere</div>` : "")
         + (q && V.length ? `<div class="hinweis">Summe der Treffer: ${eurC(V.reduce((a, v) => a + v.wert, 0))} (${zeitraum})${alleZeit ? "" : ` · alle Jahre ${eurC(V.reduce((a, v) => a + v.gesamt, 0))}`}</div>` : "")
@@ -871,6 +895,8 @@ function zeichneProvisionen(D) {
   $("#pv-such-v").oninput = e => { pvSucheV = e.target.value; vertraege(); };
   const neu = () => { zeichneProvisionen(D); requestAnimationFrame(diagrammeZeichnen); };
   document.querySelectorAll("#seg-pvn button").forEach(b => b.onclick = () => { pvNummer = b.dataset.v; neu(); });
+  document.querySelectorAll("#seg-pvk button").forEach(b => b.onclick = () => { pvSortK = b.dataset.v;
+    document.querySelectorAll("#seg-pvk button").forEach(x => x.setAttribute("aria-pressed", x === b)); kunden(); });
   document.querySelectorAll("#seg-pvb button").forEach(b => b.onclick = () => { pvBereich = b.dataset.v; neu(); });
   document.querySelectorAll("#seg-pv button").forEach(b => b.onclick = () => { pvJahr = b.dataset.v; pvMonat = "alle"; neu(); });
   $("#pv-monat").onchange = e => { pvMonat = e.target.value; neu(); };
