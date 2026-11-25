@@ -98,7 +98,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "b933c3eadb";
+const APP_VERSION = "04a7f42442";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -859,6 +859,18 @@ function zeichneProvisionen(D) {
   }
   h += card("Nach Provisionsart", tabelle([["Art"], ["Provision", 1], ["Buchungen", 1], ["Einheiten", 1]], [...AR.values()].sort((a, b) => b.wert - a.wert).map(x => [esc(x.k), eurC(x.wert), x.n, einh(x.einh)])),
     "Abschluss = AP/Erstbeitrag · Dynamik & Erhöhung · Bestand & laufend = BP, Folge-/Sachprovision, BBC, Vermögensverwaltung · KBB · Stornos sind in der jeweiligen Art mit Minus enthalten");
+  // Abdeckung: welche Abrechnungen liegen je Monat vor? (zeigt Lücken, z.B. fehlende Läufe)
+  const abJahr = pvJahr === "alle" ? null : pvJahr;
+  const AB0 = PV.abrechnungen.filter(a => (pvNummer === "gesamt" || a.nr === pvNummer) && a.periode && (!abJahr || a.periode.startsWith(abJahr)));
+  if (AB0.length && abJahr) {
+    const artName = a => a.quelle === "AGM" ? (a.art === "KBB" ? "AG Makler KBB" : "AG Makler") : a.quelle === "FNZ" ? "FNZ" : a.art;
+    const zeilen = [...new Set(AB0.map(a => `${a.nr}|${artName(a)}`))].sort();
+    const mon = Array.from({ length: 12 }, (_, i) => `${abJahr}-${String(i + 1).padStart(2, "0")}`);
+    h += card(`Welche Abrechnungen liegen vor · ${abJahr}`, `<div class="scroll"><table class="abdeckung"><thead><tr><th>Nummer</th><th>Abrechnung</th>${mon.map(m => `<th class="n">${monat(m).split(" ")[0]}</th>`).join("")}</tr></thead><tbody>`
+      + zeilen.map(z => { const [nr, art] = z.split("|"); return `<tr><td>${esc(nr)}</td><td>${esc(art)}</td>${mon.map(m => { const n = AB0.filter(a => a.nr === nr && artName(a) === art && a.periode === m).length;
+          return `<td class="n">${n ? `<span class="gruen">${n > 1 ? n + "×" : "✓"}</span>` : (m <= new Date().toISOString().slice(0, 7) ? `<span class="kl">–</span>` : "")}</td>`; }).join("")}</tr>`; }).join("")
+      + `</tbody></table></div>`, "✓ = Abrechnung eingelesen (2× = zwei Läufe im Monat) · – = für diesen Monat liegt nichts vor; fehlende Abrechnungen einfach in den Eingang legen");
+  }
   h += card("Eingelesene Abrechnungen", AB.length ? tabelle([["Abrechnung"], ["Nummer"], ["Datum", 1], ["Positionen", 1], ["Netto", 1], ["Auszahlung", 1], ["Stornoreserve-Konto", 1], ["Prüfung"]],
       AB.slice().reverse().map(a => [`${a.periode ? monat(a.periode) : "–"} · ${esc(a.quelle === "FNZ" ? "FNZ Provisionsauszug" : a.art)}${a.lauf ? " Lauf " + esc(a.lauf) : ""}`, esc(a.nr || "–"), datumDe(a.datum), a.positionen, eurC(a.netto), eurC(a.auszahlung),
         eurC(a.sr_stand), a.geprueft ? `<span class="gruen">✓ Summen stimmen</span>` : `<span class="rot" title="${esc(a.pruefung)}">⚠ ${esc(a.pruefung)}</span>`])) : leer("Keine Abrechnung im Zeitraum."),
