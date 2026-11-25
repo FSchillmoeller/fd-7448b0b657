@@ -54,6 +54,10 @@ nav { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 
 .g-kopf .jahre { justify-self: start; float: none; }
 .filter { padding: 10px 14px; } .filter label { display: flex; gap: 10px; align-items: center; color: var(--t2); font-size: 13px; } .filter select { flex: 1; min-width: 0; width: 100%; max-width: 420px; }
 .ma-link { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--t3); }
+.pv-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+@media (max-width: 640px) { .pv-filter .lang { display: none; } }
+.such { width: 100%; max-width: 420px; font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); color: var(--t1); margin: 2px 0 10px; }
+@media (max-width: 560px) { #tabs-geschaeft { grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; } #tabs-geschaeft button { padding: 8px 9px; } }
 .kl { color: var(--t3); font-size: .78em; font-weight: 400; }
 .hinweis { color: var(--t3); font-size: 12.5px; padding: 0 2px; }
 .tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--line); border-radius: 11px; padding: 3px; gap: 3px; }
@@ -220,6 +224,7 @@ footer details { margin-top: 6px; }
         <button role="tab" data-tab="g-abschluss" aria-selected="true">Steuern &amp; Abschlüsse</button>
         <button role="tab" data-tab="g-mitarbeiter">Mitarbeiter</button>
         <button role="tab" data-tab="g-statistik">Statistiken</button>
+        <button role="tab" data-tab="g-provisionen">Provisionen</button>
         <button role="tab" data-tab="g-einnahmen">Einnahme&shy;quellen</button>
       </div>
     </nav>
@@ -231,10 +236,11 @@ footer details { margin-top: 6px; }
     <section id="g-abschluss"></section>
     <section id="g-mitarbeiter"></section>
     <section id="g-statistik"></section>
+    <section id="g-provisionen"></section>
     <section id="g-einnahmen"></section>
     <footer id="fuss"></footer>
   </div>
 </div>
-<script src="app.js?v=fd8461260b"></script>
+<script src="app.js?v=f3aad052cf"></script>
 </body>
 </html>
