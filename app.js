@@ -98,7 +98,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "04a7f42442";
+const APP_VERSION = "f574a7019a";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -823,9 +823,10 @@ function zeichneProvisionen(D) {
     legende(serien.map(x => ({ name: x.name, farbe: x.farbe }))) + platz("c-pv-monat", { art: "stapel", labels: MM, xfmt: monat, serien }),
     "netto nach Stornoreserve, ohne USt · nur eingelesene Abrechnungen, alle Läufe eines Monats zusammen · Monate ohne Abrechnung fehlen");
   const MA = gruppe(C.filter(c => c.pa), c => c.pa);
-  h += card(`Was dir deine Mitarbeiter bringen · ${zeitraum}`, MA.length ? tabelle([["Mitarbeiter"], ["Provision für dich", 1], ["Einheiten", 1], ["Buchungen", 1], ["Anteil", 1]],
-      MA.map(m => [esc(m.k), `<b>${eurC(m.wert)}</b>`, einh(m.einh), m.n, par ? pct(m.wert / par * 100, 0) : "–"])) : leer("Keine Mitarbeiter-Buchungen im Zeitraum."),
-    "deine Provision aus dem Geschäft deiner Vertriebspartner (Abschnitt „Vertriebspartner“ der Abrechnung), nach Stornoreserve");
+  const linieVon = n => { const s = (PV.partner || {})[n]; return s && s.s ? esc(s.s) + (s.b ? ` <span class="kl">· unter ${esc(s.b)}</span>` : "") : "–"; };
+  h += card(`Was dir deine Mitarbeiter bringen · ${zeitraum}`, MA.length ? tabelle([["Mitarbeiter"], ["Linie"], ["Provision für dich", 1], ["Einheiten", 1], ["Buchungen", 1], ["Anteil", 1]],
+      MA.map(m => [esc(m.k), linieVon(m.k), `<b>${eurC(m.wert)}</b>`, einh(m.einh), m.n, par ? pct(m.wert / par * 100, 0) : "–"])) : leer("Keine Mitarbeiter-Buchungen im Zeitraum."),
+    "deine Provision aus dem Geschäft deiner Vertriebspartner (Abschnitt „Vertriebspartner“ der Abrechnung), nach Stornoreserve · Linie: unter welcher deiner Nummern der Partner laut Partnerliste hängt (6636 oder 7191) und sein direkter Betreuer");
   const KG = gruppe(C.filter(c => c.kn), c => c.kn);
   const ohneK = C.filter(c => !c.kn).reduce((a, c) => a + wert(c), 0);
   const kSum = KG.reduce((a, k) => a + k.wert, 0);
