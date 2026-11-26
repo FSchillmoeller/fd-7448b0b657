@@ -98,7 +98,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "f574a7019a";
+const APP_VERSION = "3ce80956bb";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -180,6 +180,8 @@ document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
   const gruppe = b.closest(".tabs");
   gruppe.querySelectorAll("button").forEach(x => x.setAttribute("aria-selected", x === b));
   letzterTab[bereich] = b.dataset.tab;
+  // Jahresauswahl mit Umsatz/Kosten/Gewinn nicht bei den Provisionen – die haben ihre eigene Auswahl
+  $("#g-kopf").hidden = bereich !== "geschaeft" || b.dataset.tab === "g-provisionen";
   document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === b.dataset.tab));
   window.scrollTo({ top: 0 });
 });
