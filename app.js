@@ -144,7 +144,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "fa60e22c7f";
+const APP_VERSION = "570744546e";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -937,11 +937,11 @@ function zeichneProvisionen(D) {
     }
     const tys = (PV.boni_typen || []).filter(t => [...BJ.values()].some(x => x[t]));
     const jahre = [...BJ.keys()].sort().reverse();
-    h += card("Boni pro Jahr", jahre.length ? tabelle([["Jahr"], ...tys.map(t => [t, 1]), ["Summe Geld", 1]],
+    h += card("Boni pro Jahr", jahre.length ? tabelle([["Jahr"], ...tys.map(t => [t, 1]), ["Summe", 1]],
         jahre.map(j => { const x = BJ.get(j), geld = tys.filter(t => !t.includes("Sachleistung")).reduce((s, t) => s + (x[t] || 0), 0);
           return [j === pvJahr ? `<b>${esc(j)}</b>` : esc(j), ...tys.map(t => x[t] ? eurC(x[t]) : `<span class="kl">–</span>`), `<b>${eurC(geld)}</b>`]; }))
       : leer("Keine Boni für diese Nummer."),
-      "Erfolgsbonus = aus den Finanzierungs-/Kapitalanlagen-Abrechnungen · Bonuszahlung Finanzierung = Umbuchungen in den Abrechnungen (nicht in der Provision oben enthalten) · Sonderzahlung = per Brief (Erfolgsbeteiligung, Sonderbonus), von Hand erfasst · Beteiligungsplan = Sachleistung (Depot-Einzahlung, Versicherungsprämien), kein Geldzufluss, nicht in der Summe · Kundenbetreuungsbonus = laufend von WWK und Universa");
+      "Boni = jährliche Erfolgsbeteiligung und Sonderzahlungen der Global-Finanz (per Brief, von Hand erfasst; später auch UFB/ULB über die Kontoauszüge) · nicht hier: Erfolgsbonus Finanzierungen (steckt je Finanzierung in der Provision), Kundenbetreuungsbonus (= Bestandsprovision), Beteiligungsplan (Altersvorsorge)");
   }
   h += card("Eingelesene Abrechnungen", AB.length ? tabelle([["Abrechnung"], ["Nummer"], ["Datum", 1], ["Positionen", 1], ["Netto", 1], ["Auszahlung", 1], ["Stornoreserve-Konto", 1], ["Prüfung"]],
       AB.slice().reverse().map(a => [`${a.periode ? monat(a.periode) : "–"} · ${esc(a.quelle === "FNZ" ? "FNZ Provisionsauszug" : a.art)}${a.lauf ? " Lauf " + esc(a.lauf) : ""}`, esc(a.nr || "–"), datumDe(a.datum), a.positionen, eurC(a.netto), eurC(a.auszahlung),
