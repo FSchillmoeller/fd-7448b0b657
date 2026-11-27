@@ -144,7 +144,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "de8f5775a3";
+const APP_VERSION = "fa60e22c7f";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -928,6 +928,20 @@ function zeichneProvisionen(D) {
       + zeilen.map(z => { const [nr, art] = z.split("|"); return `<tr><td>${esc(nr)}</td><td>${esc(art)}</td>${mon.map(m => { const n = AB0.filter(a => a.nr === nr && artName(a) === art && a.periode === m).length;
           return `<td class="n">${n ? `<span class="gruen">${n > 1 ? n + "×" : "✓"}</span>` : (m <= new Date().toISOString().slice(0, 7) ? `<span class="kl">–</span>` : "")}</td>`; }).join("")}</tr>`; }).join("")
       + `</tbody></table></div>`, "✓ = Abrechnung eingelesen (2× = zwei Läufe im Monat) · – = für diesen Monat liegt nichts vor; fehlende Abrechnungen einfach in den Eingang legen");
+  }
+  if ((PV.boni || []).length) {   // Boni je Jahr: Erfolgsbonus aus Abrechnungen, Sonderzahlungen per Brief, Beteiligungsplan (Sachleistung)
+    const BJ = new Map();
+    for (const [j, nr, t, v] of PV.boni) {
+      if (pvNummer !== "gesamt" && nr !== pvNummer) continue;
+      const x = BJ.get(j) || {}; x[t] = (x[t] || 0) + v; BJ.set(j, x);
+    }
+    const tys = (PV.boni_typen || []).filter(t => [...BJ.values()].some(x => x[t]));
+    const jahre = [...BJ.keys()].sort().reverse();
+    h += card("Boni pro Jahr", jahre.length ? tabelle([["Jahr"], ...tys.map(t => [t, 1]), ["Summe Geld", 1]],
+        jahre.map(j => { const x = BJ.get(j), geld = tys.filter(t => !t.includes("Sachleistung")).reduce((s, t) => s + (x[t] || 0), 0);
+          return [j === pvJahr ? `<b>${esc(j)}</b>` : esc(j), ...tys.map(t => x[t] ? eurC(x[t]) : `<span class="kl">–</span>`), `<b>${eurC(geld)}</b>`]; }))
+      : leer("Keine Boni für diese Nummer."),
+      "Erfolgsbonus = aus den Finanzierungs-/Kapitalanlagen-Abrechnungen · Bonuszahlung Finanzierung = Umbuchungen in den Abrechnungen (nicht in der Provision oben enthalten) · Sonderzahlung = per Brief (Erfolgsbeteiligung, Sonderbonus), von Hand erfasst · Beteiligungsplan = Sachleistung (Depot-Einzahlung, Versicherungsprämien), kein Geldzufluss, nicht in der Summe · Kundenbetreuungsbonus = laufend von WWK und Universa");
   }
   h += card("Eingelesene Abrechnungen", AB.length ? tabelle([["Abrechnung"], ["Nummer"], ["Datum", 1], ["Positionen", 1], ["Netto", 1], ["Auszahlung", 1], ["Stornoreserve-Konto", 1], ["Prüfung"]],
       AB.slice().reverse().map(a => [`${a.periode ? monat(a.periode) : "–"} · ${esc(a.quelle === "FNZ" ? "FNZ Provisionsauszug" : a.art)}${a.lauf ? " Lauf " + esc(a.lauf) : ""}`, esc(a.nr || "–"), datumDe(a.datum), a.positionen, eurC(a.netto), eurC(a.auszahlung),
