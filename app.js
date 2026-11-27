@@ -69,11 +69,16 @@ function hinweisBanner(html) {
   d.querySelector("button").onclick = () => d.remove();
   document.body.prepend(d);
 }
-// Namen ein-/ausblenden (Knopf bei den Kunden); die Wahl merkt sich jedes Gerät
-let namenAn = true;
-try { namenAn = localStorage.getItem("namen-an") !== "0"; } catch { /* ohne Speicher: eingeblendet */ }
-const hatNamen = () => Object.keys(NAMEN).length > 0;
-const NM = () => namenAn ? NAMEN : {};
+// Namen ein-/ausblenden (Knopf bei den Kunden): Einblenden jedes Mal mit Face ID, Ausblenden jederzeit.
+// Beim Sperren und sobald die App in den Hintergrund geht, sind die Namen wieder weg.
+const namenFreigeschaltet = () => !!(ZUGANG && (ZUGANG.namen || []).length);
+const namenSichtbar = () => Object.keys(NAMEN).length > 0;
+const NM = () => NAMEN;
+async function namenEinblenden() {
+  const { id, prf } = await passkeyPrf(ZUGANG);
+  await namenLaden(await kekAusPrf(prf), id);
+  if (!namenSichtbar()) throw new Error("Namen konnten nicht entschlüsselt werden.");
+}
 const kName = k => NM()[k] ? `${esc(NM()[k])} <span class="kl">${esc(k)}</span>` : esc(k);
 const kPasst = (k, q) => String(k).toLowerCase().includes(q) || (NM()[k] || "").toLowerCase().includes(q);
 
@@ -139,7 +144,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "126dde9de3";
+const APP_VERSION = "de8f5775a3";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -187,12 +192,9 @@ $("#btn-faceid").onclick = async () => {
     const kek = await kekAusPrf(prf), dk = await entpacken(kek, eintrag.wrapped);
     let neuFrei = false;
     if (NK_NEU) { await namenFreischalten(kek, id); neuFrei = true; }
-    await namenLaden(kek, id);
-    NK_NEU = null;
+    NK_NEU = null; NAMEN = {};
     await oeffnenMitDk(dk);
-    if (neuFrei) hinweisBanner(Object.keys(NAMEN).length
-      ? "✅ Kundennamen freigeschaltet. Jetzt <b>finanz-zugang.json</b> aus Downloads in den Ordner <b>Eingang</b> ziehen – dann siehst du die Namen auch auf deinen anderen Geräten."
-      : "Der Schlüssel ist gespeichert, aber die Namen sind noch nicht online. Bitte <b>finanz-zugang.json</b> in den Eingang ziehen und in ein paar Minuten neu laden.");
+    if (neuFrei) hinweisBanner("✅ Kundennamen freigeschaltet. Jetzt <b>finanz-zugang.json</b> aus Downloads in den Ordner <b>Eingang</b> ziehen – dann gibt es den Knopf „Namen einblenden“ auch auf deinen anderen Geräten.");
   } catch (e) {
     fehler(e.name === "NotAllowedError" ? "Abgebrochen." : e.name === "OperationError" ? "Schlüssel passt nicht." : (e.message || String(e)));
   } finally { $("#btn-faceid").disabled = false; }
@@ -218,7 +220,7 @@ $("#btn-sperren").onclick = sperren;
 $("#btn-neu").onclick = async () => { try { if (await neueVersion()) return; await oeffnenMitDk(DK); } catch (e) { fehler(e.message); } };
 // automatisch sperren, wenn die App länger als 5 Minuten im Hintergrund war
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) versteckt = Date.now();
+  if (document.hidden) { versteckt = Date.now(); if (namenSichtbar()) { NAMEN = {}; if (DK) zeichnen(); } }
   else if (DK && versteckt && Date.now() - versteckt > 5 * 60 * 1000) sperren();
   else if (DK) oeffnenMitDk(DK).catch(e => console.error(e));
 });
@@ -898,9 +900,9 @@ function zeichneProvisionen(D) {
     "Grundlage für die Frage, welche Kunden du abgeben kannst: Provision je Kunde im gewählten Zeitraum, nach Stornoreserve, ohne USt"
     + (ohneK ? ` · nicht enthalten: ${eurC(ohneK)} ohne Kundenbezug (laufende FNZ-Provision rechnet FNZ je Fonds ab, nicht je Kunde; Overhead aus dem Pool)` : ""));
   h += card("Kunden", `<div class="pv-filter">${seg("seg-pvk", ["wert", "lauf"], pvSortK, w => w === "wert" ? "nach Provision" : "nach laufender Provision")}`
-    + (hatNamen() ? ` <button class="icon-btn" id="btn-namen" aria-pressed="${namenAn}">${namenAn ? "Namen ausblenden" : "Namen einblenden"}</button>` : "") + `</div>`
-    + `<input id="pv-such-k" class="such" type="search" placeholder="${hatNamen() && namenAn ? "Name oder Kundennummer suchen" : "Kundennummer suchen, z.B. K00042"}" value="${esc(pvSucheK)}"><div id="pv-kunden"></div>`,
-    (hatNamen() ? "Namen nur auf deinen Geräten entschlüsselt (eigener Schlüssel)" : "online nur Kundennummern – Namen lassen sich über die Seite in ~/Finanzen-Privat freischalten; dort liegt auch die Excel mit Namen")
+    + (namenFreigeschaltet() ? ` <button class="icon-btn" id="btn-namen" aria-pressed="${namenSichtbar()}">${namenSichtbar() ? "Namen ausblenden" : "Namen einblenden (Face ID)"}</button>` : "") + `</div>`
+    + `<input id="pv-such-k" class="such" type="search" placeholder="${namenSichtbar() ? "Name oder Kundennummer suchen" : "Kundennummer suchen, z.B. K00042"}" value="${esc(pvSucheK)}"><div id="pv-kunden"></div>`,
+    (namenFreigeschaltet() ? "Namen nur auf deinen Geräten entschlüsselt (eigener Schlüssel, Einblenden mit Face ID)" : "online nur Kundennummern – Namen lassen sich über die Seite in ~/Finanzen-Privat freischalten; dort liegt auch die Excel mit Namen")
     + " · laufend = Bestand, KBB, Dynamik · Kunde antippen zeigt die Verträge");
   h += card("Verträge", `<input id="pv-such-v" class="such" type="search" placeholder="Policen-/Depotnummer, Kunde oder Gesellschaft" value="${esc(pvSucheV)}"><div id="pv-vertraege"></div>`,
     "ein Vertrag = eine Policen- bzw. Depotnummer; Summe aller Buchungen (Abschluss, Dynamik, Bestand, KBB, Stornos)");
@@ -965,10 +967,11 @@ function zeichneProvisionen(D) {
   const neu = () => { zeichneProvisionen(D); requestAnimationFrame(diagrammeZeichnen); };
   document.querySelectorAll("#seg-pvn button").forEach(b => b.onclick = () => { pvNummer = b.dataset.v; neu(); });
   const bn = $("#btn-namen");
-  if (bn) bn.onclick = () => {
-    namenAn = !namenAn;
-    try { localStorage.setItem("namen-an", namenAn ? "1" : "0"); } catch { /* egal */ }
-    neu();
+  if (bn) bn.onclick = async () => {
+    if (namenSichtbar()) { NAMEN = {}; neu(); return; }
+    bn.disabled = true;
+    try { await namenEinblenden(); neu(); }
+    catch (e) { bn.disabled = false; if (e.name !== "NotAllowedError") hinweisBanner(esc(e.message || String(e))); }
   };
   document.querySelectorAll("#seg-pvk button").forEach(b => b.onclick = () => { pvSortK = b.dataset.v;
     document.querySelectorAll("#seg-pvk button").forEach(x => x.setAttribute("aria-pressed", x === b)); kunden(); });
