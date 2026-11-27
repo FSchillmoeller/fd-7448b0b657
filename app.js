@@ -36,6 +36,42 @@ async function datenEntschluesseln(dk, paket) {
   return JSON.parse(text);
 }
 
+// Kundennamen: eigener Schlüssel (nur auf deinen Geräten, verpackt mit dem Passkey) – ohne ihn nur Kundennummern
+let NAMEN = {}, NK_NEU = null;
+async function namenEntschluesseln(nk, paket) {
+  const key = await crypto.subtle.importKey("raw", nk, "AES-GCM", false, ["decrypt"]);
+  const gz = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64d(paket.iv), additionalData: enc.encode("finanz-namen v1") }, key, b64d(paket.ct));
+  return JSON.parse(await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).text());
+}
+async function namenLaden(kek, id) {
+  try {
+    let nk = NK_NEU;
+    const liste = (ZUGANG && ZUGANG.namen) || [];
+    if (!nk) for (const e of [...liste.filter(x => x.id === id), ...liste.filter(x => x.id !== id)]) {
+      try { nk = await entpacken(kek, e.wrapped); break; } catch { /* anderer Passkey */ }
+    }
+    if (!nk) return;
+    NAMEN = await namenEntschluesseln(nk, await laden("namen.enc"));
+  } catch (e) { console.error("Namen", e); NAMEN = {}; }
+}
+async function namenFreischalten(kek, id) {
+  const wrapped = await verpacken(kek, NK_NEU);
+  ZUGANG = { ...ZUGANG, namen: [{ id, angelegt: new Date().toISOString().slice(0, 10), wrapped }, ...((ZUGANG.namen || []).filter(x => x.id !== id))] };
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(ZUGANG, null, 1)], { type: "application/json" }));
+  a.download = "finanz-zugang.json";
+  a.click();
+}
+function hinweisBanner(html) {
+  const d = document.createElement("div");
+  d.className = "banner";
+  d.innerHTML = html + ' <button class="link">OK</button>';
+  d.querySelector("button").onclick = () => d.remove();
+  document.body.prepend(d);
+}
+const kName = k => NAMEN[k] ? `${esc(NAMEN[k])} <span class="kl">${esc(k)}</span>` : esc(k);
+const kPasst = (k, q) => String(k).toLowerCase().includes(q) || (NAMEN[k] || "").toLowerCase().includes(q);
+
 // ------------------------------------------------------------------ Passkey
 const rpId = location.hostname;
 async function passkeyPrf(zugang) {
@@ -98,7 +134,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "3ce80956bb";
+const APP_VERSION = "5b42bdd067";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -112,6 +148,8 @@ async function neueVersion() {
 
 async function start() {
   if (await neueVersion()) return;
+  const mn = location.hash.match(/namen=([\w-]+)/);
+  if (mn) { NK_NEU = b64ud(mn[1]); history.replaceState(null, "", location.pathname + location.search); }
   const m = location.hash.match(/einrichten=([\w-]+)/);
   if (m) {
     const dk = b64ud(m[1]);
@@ -131,7 +169,7 @@ async function start() {
   }
   try { ZUGANG = await laden("zugang.json"); }
   catch { $("#sperre-text").textContent = "Noch nicht eingerichtet. Bitte auf dem Mac „Handy-Zugang einrichten“ starten."; return; }
-  $("#sperre-text").textContent = "Deine Daten sind verschlüsselt. Nur du kannst sie öffnen.";
+  $("#sperre-text").textContent = NK_NEU ? "Kundennamen freischalten: einmal mit Face ID bestätigen." : "Deine Daten sind verschlüsselt. Nur du kannst sie öffnen.";
   $("#btn-faceid").hidden = false;
   if (ZUGANG.passwort) $("#btn-pw-zeigen").hidden = false;
 }
@@ -141,7 +179,15 @@ $("#btn-faceid").onclick = async () => {
   try {
     const { id, prf } = await passkeyPrf(ZUGANG);
     const eintrag = ZUGANG.passkeys.find(p => p.id === id) || ZUGANG.passkeys[0];
-    await oeffnenMitDk(await entpacken(await kekAusPrf(prf), eintrag.wrapped));
+    const kek = await kekAusPrf(prf), dk = await entpacken(kek, eintrag.wrapped);
+    let neuFrei = false;
+    if (NK_NEU) { await namenFreischalten(kek, id); neuFrei = true; }
+    await namenLaden(kek, id);
+    NK_NEU = null;
+    await oeffnenMitDk(dk);
+    if (neuFrei) hinweisBanner(Object.keys(NAMEN).length
+      ? "✅ Kundennamen freigeschaltet. Jetzt <b>finanz-zugang.json</b> aus Downloads in den Ordner <b>Eingang</b> ziehen – dann siehst du die Namen auch auf deinen anderen Geräten."
+      : "Der Schlüssel ist gespeichert, aber die Namen sind noch nicht online. Bitte <b>finanz-zugang.json</b> in den Eingang ziehen und in ein paar Minuten neu laden.");
   } catch (e) {
     fehler(e.name === "NotAllowedError" ? "Abgebrochen." : e.name === "OperationError" ? "Schlüssel passt nicht." : (e.message || String(e)));
   } finally { $("#btn-faceid").disabled = false; }
@@ -159,7 +205,7 @@ $("#btn-pw").onclick = mitPasswort;
 $("#pw").addEventListener("keydown", e => { if (e.key === "Enter") mitPasswort(); });
 
 function sperren() {
-  DK = null; DATEN = null;
+  DK = null; DATEN = null; NAMEN = {};
   document.querySelectorAll("section").forEach(s => s.innerHTML = "");
   $("#app").hidden = true; $("#sperre").hidden = false; fehler("");
 }
@@ -847,9 +893,10 @@ function zeichneProvisionen(D) {
     "Grundlage für die Frage, welche Kunden du abgeben kannst: Provision je Kunde im gewählten Zeitraum, nach Stornoreserve, ohne USt"
     + (ohneK ? ` · nicht enthalten: ${eurC(ohneK)} ohne Kundenbezug (laufende FNZ-Provision rechnet FNZ je Fonds ab, nicht je Kunde; Overhead aus dem Pool)` : ""));
   h += card("Kunden", `<div class="pv-filter">${seg("seg-pvk", ["wert", "lauf"], pvSortK, w => w === "wert" ? "nach Provision" : "nach laufender Provision")}</div>`
-    + `<input id="pv-such-k" class="such" type="search" placeholder="Kundennummer suchen, z.B. K00042" value="${esc(pvSucheK)}"><div id="pv-kunden"></div>`,
-    "online nur Kundennummern – die Namen stehen lokal auf deinem Mac in ~/Finanzen/Auswertungen/Provisionen.xlsx (Blätter „Kunden“ und „Kundenwert“) · laufend = Bestand, KBB, Dynamik · Kundennummer antippen zeigt die Verträge");
-  h += card("Verträge", `<input id="pv-such-v" class="such" type="search" placeholder="Policen-/Depotnummer, Kundennummer oder Gesellschaft" value="${esc(pvSucheV)}"><div id="pv-vertraege"></div>`,
+    + `<input id="pv-such-k" class="such" type="search" placeholder="${Object.keys(NAMEN).length ? "Name oder Kundennummer suchen" : "Kundennummer suchen, z.B. K00042"}" value="${esc(pvSucheK)}"><div id="pv-kunden"></div>`,
+    (Object.keys(NAMEN).length ? "Namen nur auf deinen Geräten entschlüsselt (eigener Schlüssel)" : "online nur Kundennummern – Namen lassen sich über die Seite in ~/Finanzen-Privat freischalten; dort liegt auch die Excel mit Namen")
+    + " · laufend = Bestand, KBB, Dynamik · Kunde antippen zeigt die Verträge");
+  h += card("Verträge", `<input id="pv-such-v" class="such" type="search" placeholder="Policen-/Depotnummer, Kunde oder Gesellschaft" value="${esc(pvSucheV)}"><div id="pv-vertraege"></div>`,
     "ein Vertrag = eine Policen- bzw. Depotnummer; Summe aller Buchungen (Abschluss, Dynamik, Bestand, KBB, Stornos)");
   const SP = gruppe(C, c => c.sp).filter(x => x.wert), GS = gruppe(C, c => c.g).filter(x => x.wert).slice(0, 12);
   h += `<div class="grid two">` + card(`Nach Sparte · ${zeitraum}`, SP.length ? hbalken(SP.map(x => ({ label: x.k, wert: x.wert, farbe: x.wert < 0 ? S2 : S1, zusatz: netto ? pct(x.wert / netto * 100, 0) : "" }))) : leer("–"),
@@ -881,25 +928,26 @@ function zeichneProvisionen(D) {
   el.innerHTML = h;
 
   const kunden = () => {
-    const q = pvSucheK.trim().toUpperCase();
-    let K = KG.filter(k => !q || String(k.k).includes(q));
+    const q = pvSucheK.trim().toLowerCase();
+    let K = KG.filter(k => !q || kPasst(k.k, q));
     if (pvSortK === "lauf") K = K.slice().sort((a, b) => b.lauf - a.lauf);
     const n = K.length;
     K = K.slice(0, q ? 200 : 30);
     $("#pv-kunden").innerHTML = K.length ? tabelle([["Kunde"], [`Provision ${zeitraum}`, 1], ["davon laufend", 1], ...(alleZeit ? [] : [["alle Jahre", 1]]), ["Verträge", 1], ["Betreut von"], ["Sparten"]],
-        K.map(k => [`<a href="#" class="pv-k" data-k="${k.k}">${k.k}</a>`, `<b>${eurC(k.wert)}</b>`, eurC(k.lauf), ...(alleZeit ? [] : [eurC(k.gesamt)]), new Set(k.c.map(c => c.k)).size,
+        K.map(k => [`<a href="#" class="pv-k" data-k="${k.k}">${kName(k.k)}</a>`, `<b>${eurC(k.wert)}</b>`, eurC(k.lauf), ...(alleZeit ? [] : [eurC(k.gesamt)]), new Set(k.c.map(c => c.k)).size,
           esc([...new Set(k.c.map(c => c.pa || "du"))].join(", ")), esc([...new Set(k.c.map(c => c.sp))].join(", "))]))
         + (n > K.length ? `<div class="hinweis">${K.length} von ${n} Kunden – Suche nutzen für weitere</div>` : "")
       : leer("Keine Kunden gefunden.");
     document.querySelectorAll(".pv-k").forEach(a => a.onclick = e => { e.preventDefault(); pvSucheV = a.dataset.k; $("#pv-such-v").value = pvSucheV; vertraege(); $("#pv-such-v").scrollIntoView({ block: "center" }); });
   };
   const vertraege = () => {
-    const q = pvSucheV.trim().toLowerCase().replace(/[\s./-]/g, "");
-    let V = gruppe(C, c => c.k).filter(v => { const c = v.c[0]; return !q || v.k.toLowerCase().includes(q) || (c.kn || "").toLowerCase() === q || c.g.toLowerCase().replace(/[\s./-]/g, "").includes(q); });
+    const q = pvSucheV.trim().toLowerCase().replace(/[\s./-]/g, ""), qn = pvSucheV.trim().toLowerCase();
+    let V = gruppe(C, c => c.k).filter(v => { const c = v.c[0]; return !q || v.k.toLowerCase().includes(q) || (c.kn || "").toLowerCase() === q || c.g.toLowerCase().replace(/[\s./-]/g, "").includes(q)
+      || (qn.length >= 3 && c.kn && (NAMEN[c.kn] || "").toLowerCase().includes(qn)); });
     const n = V.length;
     V = V.slice(0, q ? 300 : 30);
     $("#pv-vertraege").innerHTML = V.length ? tabelle([["Police / Depot"], ["Kunde"], [`Provision ${zeitraum}`, 1], ["Buchungen", 1], ["Produkt"], ["Sparte"], ["Beginn", 1], ["Betreut von"], ...(pvNummer === "gesamt" ? [["Nummer"]] : [])],
-        V.map(v => { const c = v.c[0]; return [esc(c.po || "–"), c.kn ? esc(c.kn) : `<span class="kl">ohne Kunde</span>`, `<b>${eurC(v.wert)}</b>`, v.n, esc(c.pr || c.g), esc(c.sp), c.be ? datumDe(c.be) : "–",
+        V.map(v => { const c = v.c[0]; return [esc(c.po || "–"), c.kn ? kName(c.kn) : `<span class="kl">ohne Kunde</span>`, `<b>${eurC(v.wert)}</b>`, v.n, esc(c.pr || c.g), esc(c.sp), c.be ? datumDe(c.be) : "–",
           esc([...new Set(v.c.map(x => x.pa || "du"))].join(", ")), ...(pvNummer === "gesamt" ? [esc([...new Set(v.c.map(x => x.nr))].join(", "))] : [])]; }))
         + (n > V.length ? `<div class="hinweis">${V.length} von ${n} Verträgen – Suche nutzen für weitere</div>` : "")
         + (q && V.length ? `<div class="hinweis">Summe der Treffer: ${eurC(V.reduce((a, v) => a + v.wert, 0))} (${zeitraum})${alleZeit ? "" : ` · alle Jahre ${eurC(V.reduce((a, v) => a + v.gesamt, 0))}`}</div>` : "")
