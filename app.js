@@ -144,7 +144,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "04fb2e3867";
+const APP_VERSION = "2b18fe47fd";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -234,7 +234,7 @@ document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
   gruppe.querySelectorAll("button").forEach(x => x.setAttribute("aria-selected", x === b));
   letzterTab[bereich] = b.dataset.tab;
   // Jahresauswahl mit Umsatz/Kosten/Gewinn nicht bei den Provisionen – die haben ihre eigene Auswahl
-  $("#g-kopf").hidden = bereich !== "geschaeft" || b.dataset.tab === "g-provisionen";
+  $("#g-kopf").hidden = bereich !== "geschaeft" || b.dataset.tab === "g-provisionen" || b.dataset.tab === "g-immobilie";
   document.querySelectorAll("section").forEach(s => s.classList.toggle("on", s.id === b.dataset.tab));
   window.scrollTo({ top: 0 });
 });
@@ -817,7 +817,37 @@ function zeichneGeschaeft(D) {
         "aus den Einnahme-Überschuss-Rechnungen (belegte Werte)") : "")
     + card("Auswertung nach Geschäftsfeld", leer("Folgt, sobald die Eingänge sauber Geschäftsfeldern (z.B. Versicherung, Investment, Finanzierung) zugeordnet sind."));
   document.querySelectorAll("#seg-hk button").forEach(b => b.onclick = () => { hkJahr = b.dataset.k; zeichneGeschaeft(D); });
+  zeichneGImmobilie(D);
   zeichneProvisionen(D);
+}
+
+/* Geschäftliche Immobilien (Büro Layenhof): Stammdaten aus den Verträgen, Einheiten, Finanzierung (von Hand gepflegt) */
+function zeichneGImmobilie(D) {
+  const el = $("#g-immobilie");
+  if (!el) return;
+  const O = (D.geschaeft && D.geschaeft.immobilien) || [];
+  if (!O.length) { el.innerHTML = card("Immobilie", leer("Noch keine geschäftliche Immobilie erfasst.")); return; }
+  const qm = v => (v || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " m²";
+  el.innerHTML = O.map(o => {
+    const F = o.finanzierung || [];
+    const dein = F.reduce((a, f) => a + (f.stand || 0) * (f.anteil ?? 1), 0);
+    const daten = [...new Set(F.map(f => f.datum).filter(Boolean))].sort();
+    return `<div class="grid kpis">
+        ${kpi("Fläche (euer Anteil)", qm(o.flaeche_anteilig), o.eigentum || "")}
+        ${kpi("Finanzierung (euer Anteil)", F.length ? eur(dein) : "–", daten.length ? "Stand " + datumDe(daten[daten.length - 1]) : "")}
+        ${kpi("Erbbaurecht", "bis 2085", "Grundstück gehört dem Zweckverband")}
+      </div>`
+      + card(esc(o.name), tabelle([["Merkmal"], ["Wert"]], [["Lage", esc(o.ort || "–")], ["Art", esc(o.art || "–")], ["Eigentum", esc(o.eigentum || "–")],
+          ["Erbbaurecht", esc(o.erbbaurecht || "–")], ["Verträge", esc((o.vertraege || []).join(" · "))], ...(o.planung ? [["Planung", esc(o.planung)]] : [])]),
+          o.quelle ? "aus den Verträgen · " + esc(o.quelle) : "")
+      + card("Einheiten", tabelle([["Nr."], ["Einheit"], ["Fläche", 1], ["euer Anteil", 1]],
+          (o.einheiten || []).map(e => [esc(e.nr), esc(e.bez), qm(e.m2), esc(e.anteil || "–")])),
+          "Wohn- und Nutzfläche laut Übertragungs- und Teilungsvertrag")
+      + card("Finanzierung", F.length ? tabelle([["Darlehen"], ["Art"], ["Stand", 1], ["euer Anteil", 1], ["Rate / Zins mtl.", 1], ["Stand vom", 1]],
+          F.map(f => [`${esc(f.bank)} <span class="kl">${esc(f.nr || "")}</span>`, esc(f.art || ""), eur(f.stand), eur((f.stand || 0) * (f.anteil ?? 1)),
+            f.rate ? eur(f.rate) : f.zins_mtl ? eur(f.zins_mtl) + ' <span class="kl">Zins</span>' : "–", datumDe(f.datum)])) : leer("Keine Finanzierung erfasst."),
+          esc(o.finanzierung_hinweis || ""));
+  }).join("");
 }
 
 /* Provisionen aus den Abrechnungen (AG Makler, Kapitalanlagen, FNZ): online nur Kundennummern, Namen stehen lokal in der Excel.
