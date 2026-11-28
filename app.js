@@ -144,7 +144,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "2b18fe47fd";
+const APP_VERSION = "8e48674762";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -828,25 +828,32 @@ function zeichneGImmobilie(D) {
   const O = (D.geschaeft && D.geschaeft.immobilien) || [];
   if (!O.length) { el.innerHTML = card("Immobilie", leer("Noch keine geschäftliche Immobilie erfasst.")); return; }
   const qm = v => (v || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " m²";
+  const anteilTxt = a => a == null ? "–" : Math.abs(a - 1 / 3) < 0.01 ? "1/3" : Math.abs(a - 0.5) < 0.01 ? "1/2" : Math.abs(a - 0.25) < 0.01 ? "1/4" : pct(a * 100, 0);
   el.innerHTML = O.map(o => {
-    const F = o.finanzierung || [];
-    const dein = F.reduce((a, f) => a + (f.stand || 0) * (f.anteil ?? 1), 0);
-    const daten = [...new Set(F.map(f => f.datum).filter(Boolean))].sort();
+    const a = o.anteil ?? 1, K = o.konten || [], V = o.vermietung || [], G = o.gf_darlehen || [];
+    const dl = K.filter(k => k.saldo < 0), kk = K.filter(k => k.saldo >= 0);
+    const dlSum = dl.reduce((s, k) => s + k.saldo, 0), kkSum = kk.reduce((s, k) => s + k.saldo, 0);
+    const miete = V.reduce((s, v) => s + (v.miete || 0), 0), eigeneMiete = V.filter(v => /^du\b/.test(v.mieter)).reduce((s, v) => s + v.miete, 0);
+    const daten = [...new Set(K.map(k => k.datum).filter(Boolean))].sort(), stand = daten.length ? "Stand " + datumDe(daten[daten.length - 1]) : "";
     return `<div class="grid kpis">
-        ${kpi("Fläche (euer Anteil)", qm(o.flaeche_anteilig), o.eigentum || "")}
-        ${kpi("Finanzierung (euer Anteil)", F.length ? eur(dein) : "–", daten.length ? "Stand " + datumDe(daten[daten.length - 1]) : "")}
-        ${kpi("Erbbaurecht", "bis 2085", "Grundstück gehört dem Zweckverband")}
+        ${kpi("Bankdarlehen (euer Anteil)", eur(dlSum * a), `gesamt ${eur(dlSum)} · ${anteilTxt(a)} · ${stand}`)}
+        ${kpi("Kontoguthaben (euer Anteil)", eur(kkSum * a), `gesamt ${eur(kkSum)}`)}
+        ${kpi("Mieteinnahmen mtl.", eur(miete), `davon euer Anteil ${eur(miete * a)} · deine Miete ${eur(eigeneMiete)}`)}
+        ${kpi("Fläche (euer Anteil)", qm(o.flaeche_anteilig), "Erbbaurecht bis 2085")}
       </div>`
+      + card("Konten und Darlehen", K.length ? tabelle([["Konto"], ["Stand", 1], [`euer Anteil (${anteilTxt(a)})`, 1], ["Stand vom", 1]],
+          [...K.slice().sort((x, y) => y.saldo - x.saldo).map(k => [esc(k.name), eur(k.saldo), eur(k.saldo * a), k.datum ? datumDe(k.datum) : "–"]),
+           [`<b>Summe</b>`, `<b>${eur(dlSum + kkSum)}</b>`, `<b>${eur((dlSum + kkSum) * a)}</b>`, ""]]) : leer("Keine Konten erfasst."), esc(o.konten_hinweis || ""))
+      + (G.length ? card("Darlehen der Global-Finanz", tabelle([["Darlehen"], ["Betrag", 1], ["euer Anteil", 1], ["Hinweis"]],
+          G.map(g => [esc(g.name), g.betrag ? eur(g.betrag) : "–", g.betrag ? `${eur(g.betrag * (g.anteil ?? 1))} <span class="kl">${anteilTxt(g.anteil)}</span>` : anteilTxt(g.anteil), esc(g.hinweis || "")])),
+          "nicht in den Bankdarlehen oben enthalten") : "")
+      + (V.length ? card("Vermietung", tabelle([["Mieter"], ["Fläche ca.", 1], ["Miete mtl.", 1]],
+          [...V.map(v => [esc(v.mieter), anteilTxt(v.anteil), eur(v.miete)]), [`<b>Summe</b>`, "", `<b>${eur(miete)}</b>`]]), esc(o.vermietung_hinweis || "")) : "")
       + card(esc(o.name), tabelle([["Merkmal"], ["Wert"]], [["Lage", esc(o.ort || "–")], ["Art", esc(o.art || "–")], ["Eigentum", esc(o.eigentum || "–")],
           ["Erbbaurecht", esc(o.erbbaurecht || "–")], ["Verträge", esc((o.vertraege || []).join(" · "))], ...(o.planung ? [["Planung", esc(o.planung)]] : [])]),
           o.quelle ? "aus den Verträgen · " + esc(o.quelle) : "")
       + card("Einheiten", tabelle([["Nr."], ["Einheit"], ["Fläche", 1], ["euer Anteil", 1]],
-          (o.einheiten || []).map(e => [esc(e.nr), esc(e.bez), qm(e.m2), esc(e.anteil || "–")])),
-          "Wohn- und Nutzfläche laut Übertragungs- und Teilungsvertrag")
-      + card("Finanzierung", F.length ? tabelle([["Darlehen"], ["Art"], ["Stand", 1], ["euer Anteil", 1], ["Rate / Zins mtl.", 1], ["Stand vom", 1]],
-          F.map(f => [`${esc(f.bank)} <span class="kl">${esc(f.nr || "")}</span>`, esc(f.art || ""), eur(f.stand), eur((f.stand || 0) * (f.anteil ?? 1)),
-            f.rate ? eur(f.rate) : f.zins_mtl ? eur(f.zins_mtl) + ' <span class="kl">Zins</span>' : "–", datumDe(f.datum)])) : leer("Keine Finanzierung erfasst."),
-          esc(o.finanzierung_hinweis || ""));
+          (o.einheiten || []).map(e => [esc(e.nr), esc(e.bez), qm(e.m2), esc(e.anteil || "–")])), "Wohn- und Nutzfläche laut Übertragungs- und Teilungsvertrag");
   }).join("");
 }
 
