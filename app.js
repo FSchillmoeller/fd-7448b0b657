@@ -144,7 +144,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "3b25b417bd";
+const APP_VERSION = "810bef4e1c";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -830,24 +830,30 @@ function zeichneGImmobilie(D) {
   const qm = v => (v || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " m²";
   const anteilTxt = a => a == null ? "–" : Math.abs(a - 1 / 3) < 0.01 ? "1/3" : Math.abs(a - 0.5) < 0.01 ? "1/2" : Math.abs(a - 0.25) < 0.01 ? "1/4" : pct(a * 100, 1);
   el.innerHTML = O.map(o => {
-    const a = o.anteil ?? 1, K = o.konten || [], V = o.vermietung || [], G = o.gf_darlehen || [], CF = o.cashflow;
+    const a = o.anteil ?? 1, K = o.konten || [], V = o.vermietung || [], G = o.gf_darlehen || [], CF = o.cashflow, DP = o.depots || [];
+    const dpSum = DP.reduce((s, d) => s + (d.wert || 0), 0);
     const dl = K.filter(k => k.saldo < 0), kk = K.filter(k => k.saldo >= 0);
     const dlSum = dl.reduce((s, k) => s + k.saldo, 0), kkSum = kk.reduce((s, k) => s + k.saldo, 0);
     const gfSum = G.reduce((s, g) => s + (g.stand || 0), 0), gfDein = G.reduce((s, g) => s + (g.stand || 0) * (g.anteil ?? 1), 0);
     const miete = V.reduce((s, v) => s + (v.miete || 0), 0), eigeneMiete = V.filter(v => /^du\b/.test(v.mieter)).reduce((s, v) => s + v.miete, 0);
     const daten = [...new Set(K.map(k => k.datum).filter(Boolean))].sort(), stand = daten.length ? "Stand " + datumDe(daten[daten.length - 1]) : "";
-    const netto = (o.wert || 0) * a + (dlSum + kkSum) * a - gfDein;
+    const netto = (o.wert || 0) * a + (dlSum + kkSum + dpSum) * a - gfDein;
     return `<div class="grid kpis">
         ${o.wert ? kpi("Wert (euer Anteil)", eur(o.wert * a), `gesamt ${eur(o.wert)} · ${anteilTxt(a)} · ${o.wert_datum ? datumDe(o.wert_datum) : ""}`) : ""}
         ${kpi("Bankdarlehen (euer Anteil)", eur(dlSum * a), `gesamt ${eur(dlSum)} · ${stand}`)}
         ${G.length ? kpi("Global-Finanz-Darlehen (euer Anteil)", eur(-gfDein), `gesamt ${eur(-gfSum)}`) : ""}
-        ${o.wert ? kpi("Nettovermögen (euer Anteil)", eur(netto), "Wert − Darlehen + Kontoguthaben") : ""}
+        ${DP.length ? kpi("Depot (euer Anteil)", eur(dpSum * a), `gesamt ${eur(dpSum)}`) : ""}
+        ${o.wert ? kpi("Nettovermögen (euer Anteil)", eur(netto), "Wert − Darlehen + Konten + Depot") : ""}
         ${kpi("Mieteinnahmen mtl.", eur(miete), `davon euer Anteil ${eur(miete * a)} · deine Miete ${eur(eigeneMiete)}`)}
         ${kpi("Fläche (euer Anteil)", qm(o.flaeche_anteilig), "Erbbaurecht bis 2085")}
       </div>`
       + card("Konten und Bankdarlehen", K.length ? tabelle([["Konto"], ["Stand", 1], [`euer Anteil (${anteilTxt(a)})`, 1], ["Stand vom", 1]],
           [...K.slice().sort((x, y) => y.saldo - x.saldo).map(k => [esc(k.name), eur(k.saldo), eur(k.saldo * a), k.datum ? datumDe(k.datum) : "–"]),
            [`<b>Summe</b>`, `<b>${eur(dlSum + kkSum)}</b>`, `<b>${eur((dlSum + kkSum) * a)}</b>`, ""]]) : leer("Keine Konten erfasst."), esc(o.konten_hinweis || ""))
+      + (DP.length ? card("Depot (Tilgungsersatz)", tabelle([["Depot"], ["Wertpapier"], ["Stück", 1], ["Kurs", 1], ["Wert", 1], ["eingezahlt", 1], ["Sparrate", 1], [`euer Anteil (${anteilTxt(a)})`, 1]],
+          DP.map(d => [esc(d.name) + ` <span class="kl">${esc(d.inhaber || "")}</span>`, esc(d.papier || ""), (d.stueck || 0).toLocaleString("de-DE"), `${eur(d.kurs)} <span class="kl">${d.kurs_datum ? datumDe(d.kurs_datum) : ""}</span>`,
+            eur(d.wert), d.eingezahlt ? eur(d.eingezahlt) : "–", d.sparrate ? eur(d.sparrate) : "–", eur((d.wert || 0) * a)])),
+          [esc(o.depot_hinweis || ""), ...DP.map(d => esc(d.hinweis || ""))].filter(Boolean).join(" · ")) : "")
       + (G.length ? card("Darlehen der Global-Finanz", tabelle([["Darlehen"], ["Ursprung", 1], ["Zins", 1], ["Rate mtl.", 1], ["Stand", 1], ["euer Anteil", 1], ["Stand vom", 1]],
           G.map(g => [esc(g.name), g.betrag ? eur(g.betrag) : "–", g.zins ? pct(g.zins, 1) : "–", g.rate ? eur(g.rate) : "–", g.stand ? eur(g.stand) : "–",
             g.stand ? `${eur(g.stand * (g.anteil ?? 1))} <span class="kl">${anteilTxt(g.anteil)}</span>` : anteilTxt(g.anteil), g.datum ? datumDe(g.datum) : "–"])),
