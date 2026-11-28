@@ -144,7 +144,7 @@ async function oeffnenMitDk(dk) {
 }
 
 // Neue Programmversion? Browser/iPhone halten app.js gern im Speicher – dann einmal frisch laden.
-const APP_VERSION = "570744546e";
+const APP_VERSION = "04fb2e3867";
 async function neueVersion() {
   if (APP_VERSION.startsWith("__")) return false;
   try {
@@ -594,6 +594,7 @@ function zeichneDepots(D) {
 
 // ------------------------------------------------------------------ Geschäft
 let gJahr = null, gPostenJahr = null, hkJahr = null, maWahl = "";
+let pvOffenK = new Set();   // aufgeklappte Kunden (Verträge mit Provision je Jahr)
 let pvJahr = null, pvSucheK = "", pvSucheV = "", pvBereich = "alle", pvNummer = "gesamt", pvMonat = "alle", pvSortK = "wert";
 const tausch = (a, b) => a == null || b == null ? "" : delta(a, b);
 
@@ -903,7 +904,7 @@ function zeichneProvisionen(D) {
     + (namenFreigeschaltet() ? ` <button class="icon-btn" id="btn-namen" aria-pressed="${namenSichtbar()}">${namenSichtbar() ? "Namen ausblenden" : "Namen einblenden (Face ID)"}</button>` : "") + `</div>`
     + `<input id="pv-such-k" class="such" type="search" placeholder="${namenSichtbar() ? "Name oder Kundennummer suchen" : "Kundennummer suchen, z.B. K00042"}" value="${esc(pvSucheK)}"><div id="pv-kunden"></div>`,
     (namenFreigeschaltet() ? "Namen nur auf deinen Geräten entschlüsselt (eigener Schlüssel, Einblenden mit Face ID)" : "online nur Kundennummern – Namen lassen sich über die Seite in ~/Finanzen-Privat freischalten; dort liegt auch die Excel mit Namen")
-    + " · laufend = Bestand, KBB, Dynamik · Kunde antippen zeigt die Verträge");
+    + " · laufend = Bestand, KBB, Dynamik · Kunde antippen klappt seine Verträge mit der Provision je Jahr auf (nochmal antippen schließt)");
   h += card("Verträge", `<input id="pv-such-v" class="such" type="search" placeholder="Policen-/Depotnummer, Kunde oder Gesellschaft" value="${esc(pvSucheV)}"><div id="pv-vertraege"></div>`,
     "ein Vertrag = eine Policen- bzw. Depotnummer; Summe aller Buchungen (Abschluss, Dynamik, Bestand, KBB, Stornos)");
   const SP = gruppe(C, c => c.sp).filter(x => x.wert), GS = gruppe(C, c => c.g).filter(x => x.wert).slice(0, 12);
@@ -949,6 +950,26 @@ function zeichneProvisionen(D) {
     "jede Abrechnung wird gegen ihre eigenen Summenzeilen geprüft (je Abschnitt Brutto, Stornoreserve, Netto, Einheiten)");
   el.innerHTML = h;
 
+  // Kunde aufgeklappt: alle seine Verträge mit Provision je Jahr (alle Jahre, Filter Nummer/Bereich gelten)
+  const kundeDetail = kn => {
+    const V = new Map();
+    for (const c of C0.filter(c => c.kn === kn)) {
+      const v = V.get(c.k) || { c, j: {}, pa: new Set(), nr: new Set() };
+      for (const m in c.mo) { const j = m.slice(0, 4); v.j[j] = (v.j[j] || 0) + c.mo[m]; }
+      v.pa.add(c.pa || "du"); v.nr.add(c.nr); V.set(c.k, v);
+    }
+    const sum = v => Object.values(v.j).reduce((a, x) => a + x, 0);
+    const L = [...V.values()].sort((a, b) => sum(b) - sum(a)), J = [...new Set(L.flatMap(v => Object.keys(v.j)))].sort();
+    const zelle = x => Math.abs(x || 0) >= 0.005 ? eurC(x) : `<span class="kl">–</span>`;
+    const tot = j => L.reduce((a, v) => a + (v.j[j] || 0), 0);
+    if (!L.length) return leer("Keine Verträge.");
+    return `<div class="pv-detail">` + tabelle([["Vertrag"], ["Produkt"], ["Beginn", 1], ...J.map(j => [j === pvJahr ? `<b>${j}</b>` : j, 1]), ["Summe", 1]],
+      [...L.map(v => [esc(v.c.po || "–") + (pvNummer === "gesamt" ? ` <span class="kl">${esc([...v.nr].join(", "))}</span>` : ""),
+          esc(v.c.pr || v.c.g) + ` <span class="kl">· ${esc(v.c.g)} · ${esc(v.c.sp)}${[...v.pa].some(p => p !== "du") ? " · " + esc([...v.pa].join(", ")) : ""}</span>`,
+          v.c.be ? datumDe(v.c.be) : "–", ...J.map(j => zelle(v.j[j])), `<b>${eurC(sum(v))}</b>`]),
+        [`<b>Summe</b>`, `<span class="kl">${L.length} ${L.length === 1 ? "Vertrag" : "Verträge"}</span>`, "", ...J.map(j => `<b>${zelle(tot(j))}</b>`), `<b>${eurC(L.reduce((a, v) => a + sum(v), 0))}</b>`]])
+      + `<a href="#" class="pv-kv hinweis" data-k="${kn}">unten bei den Verträgen zeigen</a></div>`;
+  };
   const kunden = () => {
     const q = pvSucheK.trim().toLowerCase();
     let K = KG.filter(k => !q || kPasst(k.k, q));
@@ -960,7 +981,21 @@ function zeichneProvisionen(D) {
           esc([...new Set(k.c.map(c => c.pa || "du"))].join(", ")), esc([...new Set(k.c.map(c => c.sp))].join(", "))]))
         + (n > K.length ? `<div class="hinweis">${K.length} von ${n} Kunden – Suche nutzen für weitere</div>` : "")
       : leer("Keine Kunden gefunden.");
-    document.querySelectorAll(".pv-k").forEach(a => a.onclick = e => { e.preventDefault(); pvSucheV = a.dataset.k; $("#pv-such-v").value = pvSucheV; vertraege(); $("#pv-such-v").scrollIntoView({ block: "center" }); });
+    document.querySelectorAll(".pv-k").forEach(a => {
+      const tr = a.closest("tr"), k = a.dataset.k;
+      const zeige = () => {
+        const d = document.createElement("tr"); d.className = "pv-drow";
+        d.innerHTML = `<td colspan="${tr.children.length}">${kundeDetail(k)}</td>`; tr.after(d);
+        const v = d.querySelector(".pv-kv");
+        if (v) v.onclick = e => { e.preventDefault(); pvSucheV = k; $("#pv-such-v").value = pvSucheV; vertraege(); $("#pv-such-v").scrollIntoView({ block: "center" }); };
+      };
+      if (pvOffenK.has(k)) zeige();
+      a.onclick = e => {
+        e.preventDefault();
+        if (pvOffenK.has(k)) { pvOffenK.delete(k); const n = tr.nextElementSibling; if (n && n.classList.contains("pv-drow")) n.remove(); }
+        else { pvOffenK.add(k); zeige(); }
+      };
+    });
   };
   const vertraege = () => {
     const q = pvSucheV.trim().toLowerCase().replace(/[\s./-]/g, ""), qn = pvSucheV.trim().toLowerCase();
